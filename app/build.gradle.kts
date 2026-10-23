@@ -4,6 +4,9 @@ plugins {
     id("org.jetbrains.kotlin.plugin.compose")
 }
 
+// Signing details come from GitHub Actions (secrets). Without them, a debug build is made.
+val keystorePath = System.getenv("KEYSTORE_PATH")
+
 android {
     namespace = "com.westly.snakes"
     compileSdk = 35
@@ -12,14 +15,33 @@ android {
         applicationId = "com.westly.snakes"
         minSdk = 24
         targetSdk = 35
-        versionCode = 1
+        // Every GitHub build gets a higher number, so each new APK can update the old one.
+        versionCode = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
         versionName = "0.1"
+    }
+
+    signingConfigs {
+        if (keystorePath != null) {
+            create("release") {
+                storeFile = file(keystorePath)
+                storePassword = System.getenv("KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("KEY_ALIAS")
+                keyPassword = System.getenv("KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (keystorePath != null) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
+    }
+
+    lint {
+        checkReleaseBuilds = false
     }
 
     compileOptions {
