@@ -24,6 +24,7 @@ android {
         if (keystorePath != null) {
             create("release") {
                 storeFile = file(keystorePath)
+                storeType = "pkcs12"
                 storePassword = System.getenv("KEYSTORE_PASSWORD")
                 keyAlias = System.getenv("KEY_ALIAS")
                 keyPassword = System.getenv("KEY_PASSWORD")
