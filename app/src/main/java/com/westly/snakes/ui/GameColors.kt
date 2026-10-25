@@ -35,15 +35,15 @@ object GameColors {
     val PillText = Color(0xFFFFFFFF)
 
     // Pawns
-    val PawnRed = Color(0xFFE53935)
-    val PawnRedDark = Color(0xFFA31515)
-    val PawnBlue = Color(0xFF1E6FE0)
-    val PawnBlueDark = Color(0xFF123F9A)
+    val PawnRed = Color(0xFFD81B1B)
+    val PawnRedDark = Color(0xFF6E0707)
+    val PawnBlue = Color(0xFF1456D6)
+    val PawnBlueDark = Color(0xFF08256E)
 
     // Dice
     val DieTop = Color(0xFF2B4DFF)
     val DieBottom = Color(0xFF1530C8)
-    val DieRim = Color(0xFF0E1E8C)
+    val DieRim = Color(0xFF071670)
     val DiePip = Color(0xFFFFFFFF)
 
     // Pointing hand

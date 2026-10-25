@@ -20,8 +20,8 @@ fun DrawScope.drawDie(
 ) {
     val left = center.x - side / 2f
     val top = center.y - side / 2f
-    val radius = side * 0.18f
-    val pipRadius = side * 0.09f
+    val radius = side * 0.2f
+    val pipRadius = side * 0.1f
 
     fun pip(u: Float, v: Float) {
         drawCircle(color = GameColors.DiePip, radius = pipRadius, center = Offset(left + u * side, top + v * side))
@@ -51,7 +51,7 @@ fun DrawScope.drawDie(
             cornerRadius = CornerRadius(radius)
         )
         // thin darker rim
-        val rim = side * 0.03f
+        val rim = side * 0.055f
         drawRoundRect(
             color = GameColors.DieRim,
             topLeft = Offset(left + rim / 2f, top + rim / 2f),

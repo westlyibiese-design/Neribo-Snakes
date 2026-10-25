@@ -197,7 +197,7 @@ fun GameScreen(
             } else if (controller.waitingForPawn) {
                 // the dice are thrown: the hand points at my glowing pawn
                 val tipX = animator.drawX(Seat.HUMAN)
-                val tipY = animator.groundY(Seat.HUMAN) - layout.cell * 1.0f
+                val tipY = animator.groundY(Seat.HUMAN) - layout.cell * 1.25f
                 drawHand(Offset(tipX, tipY - bob), layout.boardSize * 0.095f)
             } else if (controller.activeSeat == Seat.OPPONENT && !controller.showGameOver) {
                 val tip = layout.topHandAnchor

@@ -65,8 +65,8 @@ class GameLayout(
     val topCounterCenter: Offset = Offset(boardLeft + 0.705f * boardSize, topTrayCenter.y)
     val bottomCounterCenter: Offset = Offset(boardLeft + 0.705f * boardSize, bottomTrayCenter.y)
 
-    val diceSizeInTray: Float = 0.095f * boardSize
-    val diceSizeOnBoard: Float = 0.1f * boardSize
+    val diceSizeInTray: Float = 0.104f * boardSize
+    val diceSizeOnBoard: Float = 0.112f * boardSize
 
     /** Centres of the two dice resting inside a tray. */
     fun diceCenters(top: Boolean): Pair<Offset, Offset> {

@@ -5,6 +5,8 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import com.westly.snakes.ui.GameColors
 
@@ -27,6 +29,32 @@ fun DrawScope.drawPawn(baseCenter: Offset, height: Float, color: PawnColor) {
         topLeft = Offset(x - 0.34f * h, bottom - 0.16f * h + 0.03f * h),
         size = Size(0.68f * h, 0.18f * h)
     )
+    // cone body outline and head position (also used for the outlines below)
+    val neckY = bottom - 0.58f * h
+    val cone = Path().apply {
+        moveTo(x - 0.25f * h, baseCenter.y)
+        cubicTo(x - 0.20f * h, baseCenter.y - 0.20f * h, x - 0.12f * h, neckY + 0.15f * h, x - 0.10f * h, neckY)
+        lineTo(x + 0.10f * h, neckY)
+        cubicTo(x + 0.12f * h, neckY + 0.15f * h, x + 0.20f * h, baseCenter.y - 0.20f * h, x + 0.25f * h, baseCenter.y)
+        close()
+    }
+    val headCenter = Offset(x, bottom - 0.74f * h)
+
+    // the whole pawn shape grown by [grow], in one flat colour
+    fun silhouette(edge: Color, grow: Float) {
+        drawOval(
+            color = edge,
+            topLeft = Offset(x - 0.31f * h - grow, bottom - 0.16f * h - grow),
+            size = Size(0.62f * h + 2f * grow, 0.16f * h + 2f * grow)
+        )
+        drawPath(path = cone, color = edge)
+        drawPath(path = cone, color = edge, style = Stroke(width = 2f * grow, join = StrokeJoin.Round))
+        drawCircle(color = edge, radius = 0.19f * h + grow, center = headCenter)
+    }
+    // white outer edge, then a thin dark edge: the pawn stands out on every square colour
+    silhouette(Color(0xFFFFFFFF), 0.050f * h)
+    silhouette(Color(0xFF111118), 0.024f * h)
+
     // base ellipse
     drawOval(
         brush = Brush.verticalGradient(
@@ -38,14 +66,6 @@ fun DrawScope.drawPawn(baseCenter: Offset, height: Float, color: PawnColor) {
         size = Size(0.62f * h, 0.16f * h)
     )
     // cone body
-    val neckY = bottom - 0.58f * h
-    val cone = Path().apply {
-        moveTo(x - 0.25f * h, baseCenter.y)
-        cubicTo(x - 0.20f * h, baseCenter.y - 0.20f * h, x - 0.12f * h, neckY + 0.15f * h, x - 0.10f * h, neckY)
-        lineTo(x + 0.10f * h, neckY)
-        cubicTo(x + 0.12f * h, neckY + 0.15f * h, x + 0.20f * h, baseCenter.y - 0.20f * h, x + 0.25f * h, baseCenter.y)
-        close()
-    }
     drawPath(
         path = cone,
         brush = Brush.verticalGradient(
@@ -55,7 +75,6 @@ fun DrawScope.drawPawn(baseCenter: Offset, height: Float, color: PawnColor) {
         )
     )
     // head
-    val headCenter = Offset(x, bottom - 0.74f * h)
     drawCircle(
         brush = Brush.verticalGradient(
             colors = listOf(main, dark),

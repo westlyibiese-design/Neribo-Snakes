@@ -14,8 +14,10 @@ import com.westly.snakes.ui.GameLayout
 import com.westly.snakes.ui.components.PawnColor
 import com.westly.snakes.ui.components.drawPawn
 
-private val HaloGlow = Color(0x664FE3F0) // soft teal glow
-private val HaloMain = Color(0xE6FFFFFF) // dashed white ring
+private val HaloBack = Color(0x38FFFFFF) // faint white disc behind the pawn
+private val HaloGlow = Color(0x992EE6F5) // wide cyan glow
+private val HaloMain = Color(0xFF2EE6F5) // bright cyan beaded ring
+private val HaloEdge = Color(0xFFFFFFFF) // thin white line inside the ring
 
 /**
  * Draws both pawns above the board, plus the teal halo ring the original game shows around a pawn
@@ -39,18 +41,20 @@ private fun DrawScope.drawSeat(layout: GameLayout, animator: PawnAnimator, seat:
     val ground = animator.groundY(seat)
     val halo = animator.haloProgress(seat)
     if (halo >= 0f) {
-        val ringCenter = Offset(x, ground - 0.12f * cell)
-        val radius = (0.55f + 0.08f * halo) * cell
-        drawCircle(color = HaloGlow, radius = radius, center = ringCenter, style = Stroke(width = 0.16f * cell))
+        val ringCenter = Offset(x, ground - 0.40f * cell)
+        val radius = (0.60f + 0.10f * halo) * cell
+        drawCircle(color = HaloBack, radius = radius, center = ringCenter)
+        drawCircle(color = HaloGlow, radius = radius, center = ringCenter, style = Stroke(width = 0.26f * cell))
         drawCircle(
             color = HaloMain,
             radius = radius,
             center = ringCenter,
             style = Stroke(
-                width = 0.045f * cell,
-                pathEffect = PathEffect.dashPathEffect(floatArrayOf(0.14f * cell, 0.1f * cell))
+                width = 0.11f * cell,
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(0.15f * cell, 0.09f * cell))
             )
         )
+        drawCircle(color = HaloEdge, radius = radius - 0.07f * cell, center = ringCenter, style = Stroke(width = 0.03f * cell))
     }
     if (animator.inCircle(seat)) return // waiting in its circle: the game screen draws it there
     drawPawn(
