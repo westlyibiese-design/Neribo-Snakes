@@ -165,7 +165,7 @@ fun GameScreen(
         Canvas(modifier = Modifier.fillMaxSize()) {
             val bob = sin(phase.floatValue * HAND_TWO_PI) * layout.boardSize * 0.01f
             val tip = layout.bottomHandAnchor
-            drawHand(Offset(tip.x, tip.y - bob), layout.boardSize * 0.11f)
+            drawHand(Offset(tip.x, tip.y - bob), layout.boardSize * 0.095f)
         }
     }
 }

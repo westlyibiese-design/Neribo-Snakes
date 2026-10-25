@@ -77,7 +77,7 @@ class GameLayout(
 
     // Labels (name labels are centred; Wins and Rank anchors are the left edge, vertically centred)
     val topNameCenter: Offset = Offset(centerX, boardTop - 0.057f * boardSize)
-    val bottomNameCenter: Offset = Offset(centerX, boardBottom + 0.049f * boardSize)
+    val bottomNameCenter: Offset = Offset(centerX, boardBottom + 0.043f * boardSize)
     val topWinsAnchor: Offset = Offset(boardLeft + 0.005f * boardSize, boardTop - 0.06f * boardSize)
     val bottomWinsAnchor: Offset = Offset(boardLeft + 0.005f * boardSize, boardBottom + 0.125f * boardSize)
     val bottomRankAnchor: Offset = Offset(boardLeft + 0.005f * boardSize, boardBottom + 0.038f * boardSize)
