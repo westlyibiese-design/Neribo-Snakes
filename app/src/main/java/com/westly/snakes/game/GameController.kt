@@ -28,12 +28,12 @@ enum class GameMode { VS_COMPUTER, MULTIPLAYER }
 enum class GameEvent { DICE_ROLL, STEP, LADDER, SNAKE, NO_MOVE, WIN, BUTTON }
 
 // Timings measured from the original game (milliseconds).
-private const val WALK_MS = 100L           // per square
-private const val CLIMB_MS = 400L          // along the ladder
-private const val SLIDE_MS = 450L          // along the snake's body
-private const val PULSE_MS = 300L          // halo ring around the pawn just before it moves
-private const val PAUSE_AFTER_MOVE_MS = 450L
-private const val OPPONENT_THINK_MS = 250L // Computer waits before its finger taps the tray
+private const val WALK_MS = 500L           // per square: 2 squares per second
+private const val CLIMB_MS = 1500L         // along the ladder
+private const val SLIDE_MS = 1600L         // along the snake's body
+private const val PULSE_MS = 700L          // halo ring around the Computer's pawn just before it moves
+private const val PAUSE_AFTER_MOVE_MS = 700L
+private const val OPPONENT_THINK_MS = 600L // Computer waits before its finger taps the tray
 private const val HAND_PRESS_MS = 250L     // the finger pressing the Computer's tray
 private const val GAME_OVER_DELAY_MS = 600L
 private val CONTROLLER_PI = PI.toFloat()
@@ -147,8 +147,9 @@ class GameController(
     }
 
     private fun resetBoard() {
-        animator.placeAt(Seat.HUMAN, 1)
-        animator.placeAt(Seat.OPPONENT, 1)
+        // both pawns wait in their circles (square 0) until their first roll
+        animator.placeAt(Seat.HUMAN, 0)
+        animator.placeAt(Seat.OPPONENT, 0)
         toss.clearTray(true)
         toss.clearTray(false)
         winner = null
@@ -210,8 +211,7 @@ class GameController(
         val position = animator.logicalSquare(seat)
 
         // The human must tap the glowing pawn before it moves; the Computer's pawn moves by itself.
-        if (seat == Seat.HUMAN) waitForPawnTap(seat)
-        animator.pulse(seat, PULSE_MS)
+        if (seat == Seat.HUMAN) waitForPawnTap(seat) else animator.pulse(seat, PULSE_MS)
 
         when (val result = resolveMove(position, total)) {
             is MoveResult.Walk -> {

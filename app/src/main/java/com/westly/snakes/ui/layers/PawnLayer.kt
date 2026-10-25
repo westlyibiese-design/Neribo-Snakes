@@ -52,6 +52,7 @@ private fun DrawScope.drawSeat(layout: GameLayout, animator: PawnAnimator, seat:
             )
         )
     }
+    if (animator.inCircle(seat)) return // waiting in its circle: the game screen draws it there
     drawPawn(
         baseCenter = Offset(x, ground - animator.liftPx(seat)),
         height = 0.9f * cell,

@@ -67,8 +67,8 @@ class PawnAnimator(private val layout: GameLayout) {
     private val opponent = PawnPose()
 
     init {
-        placeAt(Seat.HUMAN, 1)
-        placeAt(Seat.OPPONENT, 1)
+        placeAt(Seat.HUMAN, 0)
+        placeAt(Seat.OPPONENT, 0)
     }
 
     private fun pose(seat: Seat): PawnPose = if (seat == Seat.HUMAN) human else opponent
@@ -79,10 +79,21 @@ class PawnAnimator(private val layout: GameLayout) {
     private fun shareShift(seat: Seat): Float =
         if (seat == Seat.HUMAN) -SHARE_OFFSET_CELLS else SHARE_OFFSET_CELLS
 
-    /** Instant placement on a square (also refreshes the sharing shifts). */
+    /**
+     * Where a pawn waiting in its circle stands, in the same coordinates as squareCenter. Its base
+     * matches the pawn drawn in the circle by the game screen (0.385 of a 0.095W pawn below the
+     * circle centre).
+     */
+    private fun circleCenter(seat: Seat): Offset {
+        val slot = if (seat == Seat.HUMAN) layout.bottomSlotCenter else layout.topSlotCenter
+        val pawnHeight = layout.boardSize * 0.095f
+        return Offset(slot.x, slot.y + 0.385f * pawnHeight - 0.30f * layout.cell)
+    }
+
+    /** Instant placement on a square, or in the pawn's circle for square 0 (also refreshes the shifts). */
     fun placeAt(seat: Seat, square: Int) {
         val p = pose(seat)
-        val c = layout.squareCenter(square)
+        val c = if (square == 0) circleCenter(seat) else layout.squareCenter(square)
         p.square.intValue = square
         p.x.floatValue = c.x
         p.y.floatValue = c.y
@@ -96,7 +107,7 @@ class PawnAnimator(private val layout: GameLayout) {
     fun logicalSquare(seat: Seat): Int = pose(seat).square.intValue
 
     private fun refreshShifts() {
-        val same = human.square.intValue == opponent.square.intValue
+        val same = human.square.intValue == opponent.square.intValue && human.square.intValue != 0
         human.shift.floatValue = if (same) shareShift(Seat.HUMAN) else 0f
         opponent.shift.floatValue = if (same) shareShift(Seat.OPPONENT) else 0f
     }
@@ -294,6 +305,9 @@ class PawnAnimator(private val layout: GameLayout) {
     // ----- read access for PawnLayer (read inside draw lambdas) -----
 
     internal fun isMoving(seat: Seat): Boolean = pose(seat).moving.value
+
+    /** True while the pawn waits in its circle (square 0) and is not moving. */
+    internal fun inCircle(seat: Seat): Boolean = pose(seat).square.intValue == 0 && !pose(seat).moving.value
 
     /** 0..1 while the pre-move halo is shown, -1 otherwise. */
     internal fun haloProgress(seat: Seat): Float = pose(seat).halo.floatValue

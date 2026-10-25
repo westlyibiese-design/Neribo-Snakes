@@ -119,15 +119,22 @@ fun GameScreen(
             drawWoodCircle(layout.bottomSlotCenter, layout.circleDiameter)
             drawWoodCircle(layout.bottomCounterCenter, layout.circleDiameter)
 
-            // the pawn of the player whose turn it is, in that player's slot
+            // each pawn waits in its own circle until its first roll; once on the board the circle is empty
             val pawnHeight = w * 0.095f
-            val opponentActive = controller.activeSeat == Seat.OPPONENT
-            val slotCenter = if (opponentActive) layout.topSlotCenter else layout.bottomSlotCenter
-            drawPawn(
-                baseCenter = Offset(slotCenter.x, slotCenter.y + 0.385f * pawnHeight),
-                height = pawnHeight,
-                color = if (opponentActive) PawnColor.BLUE else PawnColor.RED
-            )
+            if (animator.inCircle(Seat.OPPONENT)) {
+                drawPawn(
+                    baseCenter = Offset(layout.topSlotCenter.x, layout.topSlotCenter.y + 0.385f * pawnHeight),
+                    height = pawnHeight,
+                    color = PawnColor.BLUE
+                )
+            }
+            if (animator.inCircle(Seat.HUMAN)) {
+                drawPawn(
+                    baseCenter = Offset(layout.bottomSlotCenter.x, layout.bottomSlotCenter.y + 0.385f * pawnHeight),
+                    height = pawnHeight,
+                    color = PawnColor.RED
+                )
+            }
 
             // counters
             drawOutlinedText("0", layout.topCounterCenter, w * 0.075f, GameColors.Cream, GameColors.InnerShadow)

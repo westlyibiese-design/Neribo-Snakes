@@ -17,9 +17,9 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 // Timing measured from the original game: about 0.45 s of flight, a short rest, a quick return.
-private const val FLIGHT_MS = 450L
-private const val REST_MS = 150L
-private const val RETURN_MS = 110L
+private const val FLIGHT_MS = 950L
+private const val REST_MS = 400L
+private const val RETURN_MS = 220L
 private const val OUT_PART = 0.78f // share of the flight spent travelling out to the far point
 private val TOSS_PI = PI.toFloat()
 
@@ -93,8 +93,8 @@ class DiceToss(private val layout: GameLayout) {
         val ctrlB = bendPoint(startB, apexB, 0.05f * board * (if (rnd.nextBoolean()) 1f else -1f))
 
         // spin 1.5 to 2 turns, slowing down until the dice lie upright
-        val spinA = (540f + rnd.nextFloat() * 180f) * (if (rnd.nextBoolean()) 1f else -1f)
-        val spinB = (540f + rnd.nextFloat() * 180f) * (if (rnd.nextBoolean()) 1f else -1f)
+        val spinA = (900f + rnd.nextFloat() * 360f) * (if (rnd.nextBoolean()) 1f else -1f)
+        val spinB = (900f + rnd.nextFloat() * 360f) * (if (rnd.nextBoolean()) 1f else -1f)
 
         val traySize = layout.diceSizeInTray
         val boardSize = layout.diceSizeOnBoard
