@@ -12,13 +12,11 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -28,8 +26,9 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
+import com.westly.snakes.game.GameController
+import com.westly.snakes.game.GameMode
 import com.westly.snakes.game.Seat
-import com.westly.snakes.game.rollTwoDice
 import com.westly.snakes.ui.components.ButtonIcon
 import com.westly.snakes.ui.components.LabelAlign
 import com.westly.snakes.ui.components.PawnColor
@@ -44,7 +43,6 @@ import com.westly.snakes.ui.layers.DiceToss
 import com.westly.snakes.ui.layers.DiceTossLayer
 import com.westly.snakes.ui.layers.PawnAnimator
 import com.westly.snakes.ui.layers.PawnLayer
-import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -52,8 +50,8 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 // ---------------------------------------------------------------------------
-// Phase 4: the game screen around the board plus dice tossing and pawn walking.
-// Only the bottom tray is tappable; only the red pawn moves.
+// Phase 5: the game screen around the board, driven by the GameController (You & Computer).
+// Only the bottom tray is tappable; the Computer's turns play by themselves.
 // ---------------------------------------------------------------------------
 
 private const val TEXTURE_COUNT = 300
@@ -63,9 +61,7 @@ private val HAND_TWO_PI = (2.0 * PI).toFloat()
 @Composable
 fun GameScreen(
     topName: String = "Computer",
-    bottomName: String = "Me",
-    topWins: Int = 0,
-    bottomWins: Int = 0
+    bottomName: String = "Me"
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val dens = LocalDensity.current
@@ -84,7 +80,13 @@ fun GameScreen(
         val animator = remember(layout) { PawnAnimator(layout) }
         val toss = remember(layout) { DiceToss(layout) }
         val scope = rememberCoroutineScope()
-        var busy by remember { mutableStateOf(false) }
+        val controller = remember(layout) {
+            GameController(scope, layout, animator, toss, GameMode.VS_COMPUTER)
+        }
+        DisposableEffect(controller) {
+            controller.start()
+            onDispose { controller.stop() }
+        }
 
         // 1. background gradient and texture
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -120,16 +122,27 @@ fun GameScreen(
             drawWoodCircle(layout.bottomSlotCenter, layout.circleDiameter)
             drawWoodCircle(layout.bottomCounterCenter, layout.circleDiameter)
 
-            // my red pawn in my slot (centred vertically in the circle)
+            // the token of the player whose turn it is, in that player's slot (centred vertically)
             val pawnHeight = w * 0.095f
-            drawPawn(
-                baseCenter = Offset(
-                    layout.bottomSlotCenter.x,
-                    layout.bottomSlotCenter.y + 0.385f * pawnHeight
-                ),
-                height = pawnHeight,
-                color = PawnColor.RED
-            )
+            if (controller.activeSeat == Seat.HUMAN) {
+                drawPawn(
+                    baseCenter = Offset(
+                        layout.bottomSlotCenter.x,
+                        layout.bottomSlotCenter.y + 0.385f * pawnHeight
+                    ),
+                    height = pawnHeight,
+                    color = PawnColor.RED
+                )
+            } else {
+                drawPawn(
+                    baseCenter = Offset(
+                        layout.topSlotCenter.x,
+                        layout.topSlotCenter.y + 0.385f * pawnHeight
+                    ),
+                    height = pawnHeight,
+                    color = PawnColor.BLUE
+                )
+            }
 
             // counters
             drawOutlinedText("0", layout.topCounterCenter, w * 0.075f, GameColors.Cream, GameColors.InnerShadow)
@@ -151,7 +164,7 @@ fun GameScreen(
 
             // Wins and Rank
             drawOutlinedText(
-                "Wins: $topWins", layout.topWinsAnchor, w * 0.065f,
+                "Wins: ${controller.opponentWins}", layout.topWinsAnchor, w * 0.065f,
                 GameColors.Cream, GameColors.DarkBlueOutline, LabelAlign.LEFT
             )
             drawOutlinedText(
@@ -159,19 +172,21 @@ fun GameScreen(
                 GameColors.Cream, GameColors.DarkBlueOutline, LabelAlign.LEFT
             )
             drawOutlinedText(
-                "Wins: $bottomWins", layout.bottomWinsAnchor, w * 0.065f,
+                "Wins: ${controller.humanWins}", layout.bottomWinsAnchor, w * 0.065f,
                 GameColors.Cream, GameColors.DarkBlueOutline, LabelAlign.LEFT
             )
 
-            // Your Turn pill
-            drawTurnPill(layout.pillRect, w)
+            // Your Turn pill (only during the human's turn)
+            if (controller.activeSeat == Seat.HUMAN) {
+                drawTurnPill(layout.pillRect, w)
+            }
         }
 
         // 3b. pawns, then dice (flying dice and the faces resting in the trays); no touch handling
         PawnLayer(layout, animator)
         DiceTossLayer(layout, toss)
 
-        // 4. the pointing hand, bobbing above my tray
+        // 4. the pointing hand, bobbing above the tray of the player whose turn it is
         val phase = remember { mutableFloatStateOf(0f) }
         LaunchedEffect(Unit) {
             while (true) {
@@ -183,7 +198,7 @@ fun GameScreen(
         }
         Canvas(modifier = Modifier.fillMaxSize()) {
             val bob = sin(phase.floatValue * HAND_TWO_PI) * layout.boardSize * 0.01f
-            val tip = layout.bottomHandAnchor
+            val tip = if (controller.activeSeat == Seat.HUMAN) layout.bottomHandAnchor else layout.topHandAnchor
             drawHand(Offset(tip.x, tip.y - bob), layout.boardSize * 0.095f)
         }
 
@@ -197,28 +212,24 @@ fun GameScreen(
                 .clickable(
                     interactionSource = noInteraction,
                     indication = null,
-                    onClick = {
-                        if (!busy) {
-                            busy = true
-                            scope.launch {
-                                try {
-                                    val dice = rollTwoDice()
-                                    toss.toss(fromTop = false, dice = dice)
-                                    val total = dice.first + dice.second
-                                    val from = animator.logicalSquare(Seat.HUMAN)
-                                    if (from + total > 100) {
-                                        animator.shake(Seat.HUMAN)
-                                    } else {
-                                        animator.walkTo(Seat.HUMAN, ((from + 1)..(from + total)).toList())
-                                    }
-                                } finally {
-                                    busy = false
-                                }
-                            }
-                        }
-                    }
+                    onClick = { controller.onTrayTapped(Seat.HUMAN) }
                 )
         )
+
+        // 6. Game Over dialog over everything (its dim background blocks all touches below)
+        val gameWinner = controller.winner
+        if (controller.showGameOver && gameWinner != null) {
+            val winnerLine = if (gameWinner == Seat.HUMAN) "You are the winner" else "$topName is the winner"
+            GameOverDialog(
+                title = "Game Over",
+                winnerLine = winnerLine,
+                rows = listOf(
+                    Pair(bottomName, controller.humanWins),
+                    Pair(topName, controller.opponentWins)
+                ),
+                onContinue = { controller.dismissGameOver() }
+            )
+        }
     }
 }
 

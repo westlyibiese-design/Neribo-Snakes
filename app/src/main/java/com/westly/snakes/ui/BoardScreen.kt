@@ -192,8 +192,15 @@ private fun DrawScope.drawLadder(g: Geo, from: Int, to: Int) {
     rungs(-cell * 0.01f, -cell * 0.01f, Color(0xFFD9A468), cell * 0.028f)
 }
 
-private fun DrawScope.drawSnake(g: Geo, head: Int, tail: Int) {
-    val style = SNAKE_STYLES[head] ?: return
+private const val SNAKE_CURVE_STEPS = 90
+
+/**
+ * The centre line of a snake's body: 91 points, index 0 is the head, the last one is the tail.
+ * Points are relative to the board's top-left corner. Used by [drawSnake] and by a pawn sliding
+ * down the snake.
+ */
+internal fun snakeCurve(g: Geo, head: Int, tail: Int): List<Offset> {
+    val phase = SNAKE_STYLES[head]?.phase ?: 0f
     val cell = g.cell
     val a = g.center(head)
     val b = g.center(tail)
@@ -208,18 +215,29 @@ private fun DrawScope.drawSnake(g: Geo, head: Int, tail: Int) {
     val waves = maxOf(1.5f, lc / 2.6f)
     val amp = minOf(cell, cell * (0.22f + 0.16f * lc))
 
-    val n = 90
-    val xs = FloatArray(n + 1)
-    val ys = FloatArray(n + 1)
-    val ts = FloatArray(n + 1)
+    val n = SNAKE_CURVE_STEPS
+    val points = ArrayList<Offset>(n + 1)
     for (i in 0..n) {
         val t = i.toFloat() / n
         val env = maxOf(0f, sin(PI_F * t)).pow(0.7f)
-        val off = sin(TWO_PI_F * waves * t + style.phase * TWO_PI_F) * amp * env
-        xs[i] = a.x + dx * t + px * off
-        ys[i] = a.y + dy * t + py * off
-        ts[i] = t
+        val off = sin(TWO_PI_F * waves * t + phase * TWO_PI_F) * amp * env
+        points.add(Offset(a.x + dx * t + px * off, a.y + dy * t + py * off))
     }
+    return points
+}
+
+private fun DrawScope.drawSnake(g: Geo, head: Int, tail: Int) {
+    val style = SNAKE_STYLES[head] ?: return
+    val cell = g.cell
+    val a = g.center(head)
+    val b = g.center(tail)
+    val lc = hypot(b.x - a.x, b.y - a.y) / cell
+
+    val curve = snakeCurve(g, head, tail)
+    val n = curve.size - 1
+    val xs = FloatArray(n + 1) { curve[it].x }
+    val ys = FloatArray(n + 1) { curve[it].y }
+    val ts = FloatArray(n + 1) { it.toFloat() / n }
 
     fun radius(t: Float): Float = cell * (0.2f - 0.115f * t) + (if (t < 0.06f) cell * 0.03f else 0f)
 
