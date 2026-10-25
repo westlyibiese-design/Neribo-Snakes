@@ -106,7 +106,7 @@ fun StartScreen(
                 Image(
                     painter = painterResource(R.drawable.splash_logo),
                     contentDescription = null,
-                    modifier = Modifier.width(maxWidth * 0.7f)
+                    modifier = Modifier.width(w * 0.7f)
                 )
             }
 
