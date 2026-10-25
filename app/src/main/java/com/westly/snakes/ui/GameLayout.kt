@@ -39,9 +39,9 @@ class GameLayout(
     }
 
     // Top (Computer) side
-    val roundButtonDiameter: Float = 0.115f * boardSize
-    val homeCenter: Offset = Offset(boardLeft + 0.065f * boardSize, boardTop - 0.507f * boardSize)
-    val menuCenter: Offset = Offset(boardLeft + boardSize - 0.065f * boardSize, boardTop - 0.507f * boardSize)
+    val roundButtonDiameter: Float = 0.13f * boardSize
+    val homeCenter: Offset = Offset(boardLeft + 0.065f * boardSize, boardTop - 0.495f * boardSize)
+    val menuCenter: Offset = Offset(boardLeft + boardSize - 0.065f * boardSize, boardTop - 0.495f * boardSize)
 
     val trayWidth: Float = 0.25f * boardSize
     val trayHeight: Float = 0.14f * boardSize
@@ -65,13 +65,13 @@ class GameLayout(
     val topCounterCenter: Offset = Offset(boardLeft + 0.705f * boardSize, topTrayCenter.y)
     val bottomCounterCenter: Offset = Offset(boardLeft + 0.705f * boardSize, bottomTrayCenter.y)
 
-    val diceSizeInTray: Float = 0.085f * boardSize
+    val diceSizeInTray: Float = 0.095f * boardSize
     val diceSizeOnBoard: Float = 0.1f * boardSize
 
     /** Centres of the two dice resting inside a tray. */
     fun diceCenters(top: Boolean): Pair<Offset, Offset> {
         val c = if (top) topTrayCenter else bottomTrayCenter
-        val dx = 0.052f * boardSize
+        val dx = 0.057f * boardSize
         return Pair(Offset(c.x - dx, c.y), Offset(c.x + dx, c.y))
     }
 

@@ -26,7 +26,7 @@ fun DrawScope.drawTurnPill(rect: Rect, boardSize: Float, text: String = "Your Tu
     drawOutlinedText(
         text = text,
         anchor = Offset(rect.center.x, rect.center.y),
-        sizePx = boardSize * 0.045f,
+        sizePx = boardSize * 0.06f,
         fillColor = GameColors.PillText,
         outlineColor = null,
         align = LabelAlign.CENTER

@@ -106,7 +106,7 @@ fun GameScreen(
             drawWoodCircle(layout.bottomCounterCenter, layout.circleDiameter)
 
             // my red pawn in my slot (centred vertically in the circle)
-            val pawnHeight = w * 0.085f
+            val pawnHeight = w * 0.095f
             drawPawn(
                 baseCenter = Offset(
                     layout.bottomSlotCenter.x,
@@ -117,8 +117,8 @@ fun GameScreen(
             )
 
             // counters
-            drawOutlinedText("0", layout.topCounterCenter, w * 0.05f, GameColors.Cream)
-            drawOutlinedText("0", layout.bottomCounterCenter, w * 0.05f, GameColors.Cream)
+            drawOutlinedText("0", layout.topCounterCenter, w * 0.075f, GameColors.Cream, GameColors.InnerShadow)
+            drawOutlinedText("0", layout.bottomCounterCenter, w * 0.075f, GameColors.Cream, GameColors.InnerShadow)
 
             // buttons
             drawRoundButton(layout.homeCenter, layout.roundButtonDiameter, ButtonIcon.HOME)
@@ -126,25 +126,25 @@ fun GameScreen(
 
             // name labels
             drawOutlinedText(
-                topName, layout.topNameCenter, w * 0.063f,
+                topName, layout.topNameCenter, w * 0.072f,
                 GameColors.NameGreen, GameColors.NameGreenOutline, LabelAlign.CENTER
             )
             drawOutlinedText(
-                bottomName, layout.bottomNameCenter, w * 0.063f,
+                bottomName, layout.bottomNameCenter, w * 0.072f,
                 GameColors.NameGreen, GameColors.NameGreenOutline, LabelAlign.CENTER
             )
 
             // Wins and Rank
             drawOutlinedText(
-                "Wins: $topWins", layout.topWinsAnchor, w * 0.05f,
+                "Wins: $topWins", layout.topWinsAnchor, w * 0.065f,
                 GameColors.Cream, GameColors.DarkBlueOutline, LabelAlign.LEFT
             )
             drawOutlinedText(
-                "Rank: 0", layout.bottomRankAnchor, w * 0.05f,
+                "Rank: 0", layout.bottomRankAnchor, w * 0.065f,
                 GameColors.Cream, GameColors.DarkBlueOutline, LabelAlign.LEFT
             )
             drawOutlinedText(
-                "Wins: $bottomWins", layout.bottomWinsAnchor, w * 0.05f,
+                "Wins: $bottomWins", layout.bottomWinsAnchor, w * 0.065f,
                 GameColors.Cream, GameColors.DarkBlueOutline, LabelAlign.LEFT
             )
 
