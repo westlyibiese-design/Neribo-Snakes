@@ -1,16 +1,24 @@
 package com.westly.snakes.ui
 
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -19,10 +27,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import com.westly.snakes.game.Seat
+import com.westly.snakes.game.rollTwoDice
 import com.westly.snakes.ui.components.ButtonIcon
 import com.westly.snakes.ui.components.LabelAlign
 import com.westly.snakes.ui.components.PawnColor
-import com.westly.snakes.ui.components.drawDie
 import com.westly.snakes.ui.components.drawHand
 import com.westly.snakes.ui.components.drawOutlinedText
 import com.westly.snakes.ui.components.drawPawn
@@ -30,14 +40,20 @@ import com.westly.snakes.ui.components.drawRoundButton
 import com.westly.snakes.ui.components.drawTurnPill
 import com.westly.snakes.ui.components.drawWoodCircle
 import com.westly.snakes.ui.components.drawWoodTray
+import com.westly.snakes.ui.layers.DiceToss
+import com.westly.snakes.ui.layers.DiceTossLayer
+import com.westly.snakes.ui.layers.PawnAnimator
+import com.westly.snakes.ui.layers.PawnLayer
+import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 import kotlin.random.Random
 
 // ---------------------------------------------------------------------------
-// Phase 3: the static game screen around the board. No behaviour, no taps.
-// The only motion is the pointing hand bobbing.
+// Phase 4: the game screen around the board plus dice tossing and pawn walking.
+// Only the bottom tray is tappable; only the red pawn moves.
 // ---------------------------------------------------------------------------
 
 private const val TEXTURE_COUNT = 300
@@ -65,6 +81,10 @@ fun GameScreen(
         val texture = remember(widthPx, heightPx, pxPerDp) {
             buildTexture(widthPx, heightPx, pxPerDp)
         }
+        val animator = remember(layout) { PawnAnimator(layout) }
+        val toss = remember(layout) { DiceToss(layout) }
+        val scope = rememberCoroutineScope()
+        var busy by remember { mutableStateOf(false) }
 
         // 1. background gradient and texture
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -93,11 +113,6 @@ fun GameScreen(
             // trays
             drawWoodTray(layout.trayRect(true), w)
             drawWoodTray(layout.trayRect(false), w)
-
-            // placeholder dice 4 and 1 in my tray
-            val dice = layout.diceCenters(false)
-            drawDie(dice.first, layout.diceSizeInTray, 4)
-            drawDie(dice.second, layout.diceSizeInTray, 1)
 
             // token slot and counter circles
             drawWoodCircle(layout.topSlotCenter, layout.circleDiameter)
@@ -152,6 +167,10 @@ fun GameScreen(
             drawTurnPill(layout.pillRect, w)
         }
 
+        // 3b. pawns, then dice (flying dice and the faces resting in the trays); no touch handling
+        PawnLayer(layout, animator)
+        DiceTossLayer(layout, toss)
+
         // 4. the pointing hand, bobbing above my tray
         val phase = remember { mutableFloatStateOf(0f) }
         LaunchedEffect(Unit) {
@@ -167,6 +186,39 @@ fun GameScreen(
             val tip = layout.bottomHandAnchor
             drawHand(Offset(tip.x, tip.y - bob), layout.boardSize * 0.095f)
         }
+
+        // 5. invisible tap area on my tray (no ripple, no visible change)
+        val tray = remember(layout) { layout.trayRect(false) }
+        val noInteraction = remember { MutableInteractionSource() }
+        Box(
+            modifier = Modifier
+                .offset { IntOffset(tray.left.roundToInt(), tray.top.roundToInt()) }
+                .size(with(dens) { tray.width.toDp() }, with(dens) { tray.height.toDp() })
+                .clickable(
+                    interactionSource = noInteraction,
+                    indication = null,
+                    onClick = {
+                        if (!busy) {
+                            busy = true
+                            scope.launch {
+                                try {
+                                    val dice = rollTwoDice()
+                                    toss.toss(fromTop = false, dice = dice)
+                                    val total = dice.first + dice.second
+                                    val from = animator.logicalSquare(Seat.HUMAN)
+                                    if (from + total > 100) {
+                                        animator.shake(Seat.HUMAN)
+                                    } else {
+                                        animator.walkTo(Seat.HUMAN, ((from + 1)..(from + total)).toList())
+                                    }
+                                } finally {
+                                    busy = false
+                                }
+                            }
+                        }
+                    }
+                )
+        )
     }
 }
 
