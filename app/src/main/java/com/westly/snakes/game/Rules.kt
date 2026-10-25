@@ -11,7 +11,7 @@ sealed class MoveResult {
     /** The pawn lands on a snake head ([landing]) and slides down to [to]. */
     data class Slide(val landing: Int, val to: Int) : MoveResult()
 
-    /** The roll is too big near the end: the pawn stays and the turn passes. */
+    /** Kept for compatibility. [resolveMove] no longer returns it: a roll that is too big now wins. */
     object NoMove : MoveResult()
 
     /** The pawn reaches square 100. */
@@ -21,16 +21,13 @@ sealed class MoveResult {
 /**
  * Pure rule for one move.
  *
- * - From square 98 or 99 any total wins.
- * - Otherwise the exact number wins and a bigger total is ignored.
- * - Otherwise the pawn lands on position + total: a ladder bottom climbs, a snake head slides,
- *   anything else is a plain walk. Ladder tops and snake tails do nothing.
+ * - A total that reaches square 100 or goes past it wins (extra pips are not wasted).
+ * - A total that is too small to reach 100 lands on position + total: a ladder bottom climbs,
+ *   a snake head slides, anything else is a plain walk. Ladder tops and snake tails do nothing.
  */
 fun resolveMove(position: Int, total: Int): MoveResult {
     val remaining = BoardData.LAST_SQUARE - position
-    if (position >= 98) return MoveResult.Win
-    if (total == remaining) return MoveResult.Win
-    if (total > remaining) return MoveResult.NoMove
+    if (total >= remaining) return MoveResult.Win
     val landing = position + total
     val ladderTop = BoardData.LADDERS[landing]
     if (ladderTop != null) return MoveResult.Climb(landing, ladderTop)
@@ -67,12 +64,15 @@ private val CHECK_TABLE = listOf(
     CheckRow(48, 5, "lands 53, Slide to 29"),
     CheckRow(59, 5, "lands 64, Slide to 24"),
     CheckRow(95, 5, "Win"),
-    CheckRow(95, 6, "NoMove"),
+    CheckRow(95, 6, "Win"),
+    CheckRow(95, 12, "Win"),
     CheckRow(95, 4, "Walk to 99"),
     CheckRow(97, 3, "Win"),
-    CheckRow(97, 4, "NoMove"),
+    CheckRow(97, 4, "Win"),
     CheckRow(97, 2, "Walk to 99"),
     CheckRow(98, 2, "Win"),
+    CheckRow(99, 2, "Win"),
+    CheckRow(99, 5, "Win"),
     CheckRow(99, 12, "Win")
 )
 

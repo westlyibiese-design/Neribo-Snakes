@@ -60,6 +60,10 @@ class GameController(
     var waitingForHuman by mutableStateOf(false)
         private set
 
+    /** True while the human's pawn glows and waits to be tapped (the dice are already thrown). */
+    var waitingForPawn by mutableStateOf(false)
+        private set
+
     /** True while the Game Over dialog is open. */
     var showGameOver by mutableStateOf(false)
         private set
@@ -85,6 +89,7 @@ class GameController(
 
     private var loopJob: Job? = null
     private val taps = Channel<Unit>(Channel.CONFLATED)
+    private val pawnTaps = Channel<Unit>(Channel.CONFLATED)
 
     /** Starts the first round. */
     fun start() {
@@ -97,6 +102,22 @@ class GameController(
         if (!waitingForHuman || showGameOver) return
         waitingForHuman = false
         taps.trySend(Unit)
+    }
+
+    /** The human tapped the glowing pawn. Only counts while the pawn waits for that tap. */
+    fun onPawnTapped(seat: Seat) {
+        if (seat != Seat.HUMAN) return
+        if (!waitingForPawn || showGameOver) return
+        waitingForPawn = false
+        pawnTaps.trySend(Unit)
+    }
+
+    /** Stops the running round for good (the screen that owns this controller is gone). */
+    fun stop() {
+        loopJob?.cancel()
+        loopJob = null
+        waitingForHuman = false
+        waitingForPawn = false
     }
 
     /** The check button of the Game Over dialog: close it and start a fresh round. */
@@ -119,6 +140,7 @@ class GameController(
         loopJob = scope.launch {
             old?.cancelAndJoin()
             taps.tryReceive() // forget any tap that arrived before the new round
+            pawnTaps.tryReceive()
             resetBoard()
             playRound()
         }
@@ -131,6 +153,7 @@ class GameController(
         toss.clearTray(false)
         winner = null
         waitingForHuman = false
+        waitingForPawn = false
         handPress = 0f
         activeSeat = Seat.HUMAN
     }
@@ -158,11 +181,14 @@ class GameController(
         }
     }
 
-    /** The active player's tray shows two dice ready to throw; the other tray is empty. */
+    /**
+     * The active player's own tray shows two dice ready to throw and the other tray is empty:
+     * my tray (bottom) when it is my turn, the Computer's tray (top) when it is the Computer's turn.
+     */
     private fun showReadyDice(seat: Seat) {
-        val top = seat == Seat.OPPONENT
-        toss.setTray(top, rollTwoDice())
-        toss.clearTray(!top)
+        val inTopTray = seat == Seat.OPPONENT
+        toss.clearTray(!inTopTray)
+        toss.setTray(inTopTray, rollTwoDice())
     }
 
     private suspend fun pressHand() {
@@ -183,6 +209,8 @@ class GameController(
         val total = dice.first + dice.second
         val position = animator.logicalSquare(seat)
 
+        // The human must tap the glowing pawn before it moves; the Computer's pawn moves by itself.
+        if (seat == Seat.HUMAN) waitForPawnTap(seat)
         animator.pulse(seat, PULSE_MS)
 
         when (val result = resolveMove(position, total)) {
@@ -214,6 +242,19 @@ class GameController(
             }
         }
         return false
+    }
+
+    /** Makes the pawn glow and waits until the human taps it. */
+    private suspend fun waitForPawnTap(seat: Seat) {
+        waitingForPawn = true
+        val glow = scope.launch { animator.highlight(seat) }
+        try {
+            pawnTaps.receive()
+        } finally {
+            waitingForPawn = false
+            glow.cancel()
+        }
+        glow.join()
     }
 
     private suspend fun walkSquares(seat: Seat, first: Int, last: Int) {

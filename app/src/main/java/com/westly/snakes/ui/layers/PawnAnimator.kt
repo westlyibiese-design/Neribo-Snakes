@@ -17,6 +17,7 @@ private const val SHARE_OFFSET_CELLS = 0.2f
 private const val SHAKE_AMPLITUDE_CELLS = 0.12f
 private const val SHAKE_MS = 300L
 private const val SHAKE_COUNT = 3
+private const val HIGHLIGHT_MS = 700L
 private val PI_F = PI.toFloat()
 
 /**
@@ -257,6 +258,21 @@ class PawnAnimator(private val layout: GameLayout) {
         val me = pose(seat)
         try {
             runFrames(durationMs) { t -> me.halo.floatValue = t }
+        } finally {
+            me.halo.floatValue = -1f
+        }
+    }
+
+    /**
+     * Pulses the halo ring around the pawn again and again until the caller cancels this call.
+     * Used while the pawn waits for the player to tap it. The halo is removed when it ends.
+     */
+    suspend fun highlight(seat: Seat) {
+        val me = pose(seat)
+        try {
+            while (true) {
+                runFrames(HIGHLIGHT_MS) { t -> me.halo.floatValue = sin(PI_F * t) }
+            }
         } finally {
             me.halo.floatValue = -1f
         }

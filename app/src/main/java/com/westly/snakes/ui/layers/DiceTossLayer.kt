@@ -54,9 +54,18 @@ class DiceToss(private val layout: GameLayout) {
         if (top) topFaces.value = null else bottomFaces.value = null
     }
 
-    /** Puts two dice at rest in a tray (the "ready" dice of the player whose turn it is). */
+    /**
+     * Puts two dice at rest in a tray (the "ready" dice of the player whose turn it is).
+     * Dice only ever rest in one tray at a time: filling a tray empties the other one.
+     */
     fun setTray(top: Boolean, dice: Pair<Int, Int>?) {
-        if (top) topFaces.value = dice else bottomFaces.value = dice
+        if (top) {
+            topFaces.value = dice
+            if (dice != null) bottomFaces.value = null
+        } else {
+            bottomFaces.value = dice
+            if (dice != null) topFaces.value = null
+        }
     }
 
     /** Plays the whole toss and leaves the faces in the roller's tray. */
@@ -141,7 +150,7 @@ class DiceToss(private val layout: GameLayout) {
             }
         } finally {
             // always leave a consistent state, even when the toss is cancelled
-            if (fromTop) topFaces.value = dice else bottomFaces.value = dice
+            setTray(fromTop, dice)
             flying.value = false
             shadowOn.value = true
         }

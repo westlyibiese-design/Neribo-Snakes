@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
@@ -79,7 +80,10 @@ fun GameScreen(
         val toss = remember(layout) { DiceToss(layout) }
         val scope = rememberCoroutineScope()
         val controller = remember(layout) { GameController(scope, layout, animator, toss) }
-        LaunchedEffect(controller) { controller.start() }
+        DisposableEffect(controller) {
+            controller.start()
+            onDispose { controller.stop() }
+        }
 
         // 1. background gradient and texture
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -183,6 +187,11 @@ fun GameScreen(
             if (controller.waitingForHuman) {
                 val tip = layout.bottomHandAnchor
                 drawHand(Offset(tip.x, tip.y - bob), layout.boardSize * 0.095f)
+            } else if (controller.waitingForPawn) {
+                // the dice are thrown: the hand points at my glowing pawn
+                val tipX = animator.drawX(Seat.HUMAN)
+                val tipY = animator.groundY(Seat.HUMAN) - layout.cell * 1.0f
+                drawHand(Offset(tipX, tipY - bob), layout.boardSize * 0.095f)
             } else if (controller.activeSeat == Seat.OPPONENT && !controller.showGameOver) {
                 val tip = layout.topHandAnchor
                 val press = controller.handPress * layout.boardSize * 0.03f
@@ -203,6 +212,23 @@ fun GameScreen(
                     onClick = { controller.onTrayTapped(Seat.HUMAN) }
                 )
         )
+
+        // 5b. tap area on my pawn: only exists while the pawn glows and waits for my tap
+        if (controller.waitingForPawn) {
+            val half = layout.cell * 0.9f
+            val left = animator.drawX(Seat.HUMAN) - half
+            val top = animator.groundY(Seat.HUMAN) - layout.cell * 0.45f - half
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
+                    .size(with(dens) { (2f * half).toDp() })
+                    .clickable(
+                        interactionSource = noInteraction,
+                        indication = null,
+                        onClick = { controller.onPawnTapped(Seat.HUMAN) }
+                    )
+            )
+        }
 
         // 6. the Game Over dialog, above everything
         if (controller.showGameOver) {
