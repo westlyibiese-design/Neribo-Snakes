@@ -13,7 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import com.westly.snakes.ui.BoardScreen
+import com.westly.snakes.ui.GameScreen
 import com.westly.snakes.ui.SplashScreen
 
 class MainActivity : ComponentActivity() {
@@ -26,7 +26,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             var showSplash by remember { mutableStateOf(true) }
             Box(modifier = Modifier.fillMaxSize()) {
-                BoardScreen()
+                GameScreen()
                 if (showSplash) {
                     SplashScreen(onFinished = { showSplash = false })
                 }

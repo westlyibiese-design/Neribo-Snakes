@@ -3,13 +3,7 @@ package com.westly.snakes.ui
 import android.graphics.Paint as AndroidPaint
 import android.graphics.Typeface
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -20,8 +14,6 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.min
 import com.westly.snakes.game.BoardData
 import kotlin.math.PI
 import kotlin.math.atan2
@@ -70,7 +62,7 @@ private fun darken(c: Color, a: Float): Color =
     Color(c.red * (1f - a), c.green * (1f - a), c.blue * (1f - a), c.alpha)
 
 /** Board measurements for a given board size in pixels. */
-private class Geo(val size: Float) {
+internal class Geo(val size: Float) {
     val pad = size * 0.024f
     val cell = (size - 2f * pad) / 10f
 
@@ -82,21 +74,9 @@ private class Geo(val size: Float) {
 }
 
 @Composable
-fun BoardScreen() {
-    BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Brush.verticalGradient(listOf(Color(0xFF1F5CB8), Color(0xFF123F8C))))
-    ) {
-        val boardSize = min(maxWidth - 12.dp, maxHeight * 0.66f)
-        Canvas(
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .offset(y = maxHeight * 0.30f)
-                .size(boardSize)
-        ) {
-            drawBoard()
-        }
+fun BoardCanvas(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        drawBoard()
     }
 }
 
