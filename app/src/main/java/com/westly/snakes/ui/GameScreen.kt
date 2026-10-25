@@ -1,8 +1,14 @@
 package com.westly.snakes.ui
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.WindowInsets
@@ -14,9 +20,12 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -24,9 +33,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
+import com.westly.snakes.data.Prefs
 import com.westly.snakes.game.GameController
+import com.westly.snakes.game.GameMode
 import com.westly.snakes.game.Seat
 import com.westly.snakes.ui.components.ButtonIcon
 import com.westly.snakes.ui.components.LabelAlign
@@ -49,19 +61,32 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 // ---------------------------------------------------------------------------
-// Phase 5: the game screen around the board, now driven by the GameController:
-// turns, dice, snakes, ladders, the Computer player, winning and the Game Over dialog.
+// The game screen around the board, driven by the GameController: turns, dice, snakes, ladders,
+// the Computer player or a second person (Multiplayer), winning and the Game Over dialog, plus
+// the menu panel, the confirm dialogs and the Android Back button.
 // ---------------------------------------------------------------------------
 
 private const val TEXTURE_COUNT = 300
 private const val HAND_PERIOD_MS = 700L
 private val HAND_TWO_PI = (2.0 * PI).toFloat()
 
+private enum class ConfirmKind { NONE, LEAVE, RESTART }
+
+/**
+ * One game in the given [mode]. [onLeave] is called when the player confirms leaving; the game in
+ * progress stays saved in [prefs] so the same mode can carry on later.
+ */
 @Composable
 fun GameScreen(
-    topName: String = "Computer",
-    bottomName: String = "Me"
+    mode: GameMode,
+    prefs: Prefs,
+    onLeave: () -> Unit
 ) {
+    val multiplayer = mode == GameMode.MULTIPLAYER
+    val topName = if (multiplayer) "Player 2" else "Computer"
+    val bottomName = if (multiplayer) "Player 1" else "Me"
+    val context = LocalContext.current
+
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val dens = LocalDensity.current
         val pxPerDp = dens.density
@@ -79,10 +104,32 @@ fun GameScreen(
         val animator = remember(layout) { PawnAnimator(layout) }
         val toss = remember(layout) { DiceToss(layout) }
         val scope = rememberCoroutineScope()
-        val controller = remember(layout) { GameController(scope, layout, animator, toss) }
+        val controller = remember(layout) {
+            GameController(scope, layout, animator, toss, mode, prefs, prefs.loadGame(multiplayer))
+        }
         DisposableEffect(controller) {
             controller.start()
             onDispose { controller.stop() }
+        }
+
+        var menuOpen by remember { mutableStateOf(false) }
+        var confirm by remember { mutableStateOf(ConfirmKind.NONE) }
+        var soundOn by remember { mutableStateOf(prefs.soundOn) }
+        // while the menu or a dialog is open, taps on trays and pawns are ignored
+        val blocked = menuOpen || confirm != ConfirmKind.NONE || controller.showGameOver
+        val homeSource = remember { MutableInteractionSource() }
+        val menuSource = remember { MutableInteractionSource() }
+        val homePressed by homeSource.collectIsPressedAsState()
+        val menuPressed by menuSource.collectIsPressedAsState()
+
+        // the Android Back button asks before leaving; with a dialog open it closes that dialog
+        BackHandler(enabled = true) {
+            if (confirm != ConfirmKind.NONE) {
+                confirm = ConfirmKind.NONE
+            } else {
+                menuOpen = false
+                confirm = ConfirmKind.LEAVE
+            }
         }
 
         // 1. background gradient and texture
@@ -140,10 +187,6 @@ fun GameScreen(
             drawOutlinedText("0", layout.topCounterCenter, w * 0.075f, GameColors.Cream, GameColors.InnerShadow)
             drawOutlinedText("0", layout.bottomCounterCenter, w * 0.075f, GameColors.Cream, GameColors.InnerShadow)
 
-            // buttons
-            drawRoundButton(layout.homeCenter, layout.roundButtonDiameter, ButtonIcon.HOME)
-            drawRoundButton(layout.menuCenter, layout.roundButtonDiameter, ButtonIcon.MENU)
-
             // name labels
             drawOutlinedText(
                 topName, layout.topNameCenter, w * 0.072f,
@@ -192,23 +235,25 @@ fun GameScreen(
         Canvas(modifier = Modifier.fillMaxSize()) {
             val bob = sin(phase.floatValue * HAND_TWO_PI) * layout.boardSize * 0.01f
             if (controller.waitingForHuman) {
-                val tip = layout.bottomHandAnchor
+                // above the tray of the person whose turn it is
+                val tip = if (controller.activeSeat == Seat.OPPONENT) layout.topHandAnchor else layout.bottomHandAnchor
                 drawHand(Offset(tip.x, tip.y - bob), layout.boardSize * 0.095f)
             } else if (controller.waitingForPawn) {
-                // the dice are thrown: the hand points at my glowing pawn
-                val tipX = animator.drawX(Seat.HUMAN)
-                val tipY = animator.groundY(Seat.HUMAN) - layout.cell * 1.25f
+                // the dice are thrown: the hand points at the glowing pawn of the active person
+                val pawnSeat = controller.activeSeat
+                val tipX = animator.drawX(pawnSeat)
+                val tipY = animator.groundY(pawnSeat) - layout.cell * 1.25f
                 drawHand(Offset(tipX, tipY - bob), layout.boardSize * 0.095f)
-            } else if (controller.activeSeat == Seat.OPPONENT && !controller.showGameOver) {
+            } else if (!multiplayer && controller.activeSeat == Seat.OPPONENT && !controller.showGameOver) {
                 val tip = layout.topHandAnchor
                 val press = controller.handPress * layout.boardSize * 0.03f
                 drawHand(Offset(tip.x, tip.y - bob * (1f - controller.handPress) + press), layout.boardSize * 0.095f)
             }
         }
 
-        // 5. invisible tap area on my tray (no ripple, no visible change)
-        val tray = remember(layout) { layout.trayRect(false) }
+        // 5. invisible tap areas on the trays (no ripple, no visible change)
         val noInteraction = remember { MutableInteractionSource() }
+        val tray = remember(layout) { layout.trayRect(false) }
         Box(
             modifier = Modifier
                 .offset { IntOffset(tray.left.roundToInt(), tray.top.roundToInt()) }
@@ -216,15 +261,30 @@ fun GameScreen(
                 .clickable(
                     interactionSource = noInteraction,
                     indication = null,
-                    onClick = { controller.onTrayTapped(Seat.HUMAN) }
+                    onClick = { if (!blocked) controller.onTrayTapped(Seat.HUMAN) }
                 )
         )
+        if (multiplayer) {
+            // Player 2 taps the top tray on their own turn
+            val topTray = remember(layout) { layout.trayRect(true) }
+            Box(
+                modifier = Modifier
+                    .offset { IntOffset(topTray.left.roundToInt(), topTray.top.roundToInt()) }
+                    .size(with(dens) { topTray.width.toDp() }, with(dens) { topTray.height.toDp() })
+                    .clickable(
+                        interactionSource = noInteraction,
+                        indication = null,
+                        onClick = { if (!blocked) controller.onTrayTapped(Seat.OPPONENT) }
+                    )
+            )
+        }
 
-        // 5b. tap area on my pawn: only exists while the pawn glows and waits for my tap
+        // 5b. tap area on the active pawn: only exists while that pawn glows and waits for its tap
         if (controller.waitingForPawn) {
+            val pawnSeat = controller.activeSeat
             val half = layout.cell * 0.9f
-            val left = animator.drawX(Seat.HUMAN) - half
-            val top = animator.groundY(Seat.HUMAN) - layout.cell * 0.45f - half
+            val left = animator.drawX(pawnSeat) - half
+            val top = animator.groundY(pawnSeat) - layout.cell * 0.45f - half
             Box(
                 modifier = Modifier
                     .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
@@ -232,23 +292,144 @@ fun GameScreen(
                     .clickable(
                         interactionSource = noInteraction,
                         indication = null,
-                        onClick = { controller.onPawnTapped(Seat.HUMAN) }
+                        onClick = { if (!blocked) controller.onPawnTapped(pawnSeat) }
                     )
             )
         }
+
+        // 5c. the menu panel slides down over the area above the board
+        MenuPanel(
+            layout = layout,
+            open = menuOpen,
+            soundOn = soundOn,
+            onExit = {
+                menuOpen = false
+                confirm = ConfirmKind.LEAVE
+            },
+            onRestart = {
+                menuOpen = false
+                confirm = ConfirmKind.RESTART
+            },
+            onSound = {
+                soundOn = !soundOn
+                prefs.soundOn = soundOn
+            },
+            onRate = { openRatePage(context) }
+        )
+
+        // 5d. the Home and grid buttons stay above the menu panel
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawRoundButton(
+                layout.homeCenter, layout.roundButtonDiameter, ButtonIcon.HOME,
+                if (homePressed) 0.94f else 1f
+            )
+            drawRoundButton(
+                layout.menuCenter, layout.roundButtonDiameter, ButtonIcon.MENU,
+                if (menuPressed) 0.94f else 1f
+            )
+        }
+        val buttonDp = with(dens) { layout.roundButtonDiameter.toDp() }
+        Box(
+            modifier = Modifier
+                .offset {
+                    IntOffset(
+                        (layout.homeCenter.x - layout.roundButtonDiameter / 2f).roundToInt(),
+                        (layout.homeCenter.y - layout.roundButtonDiameter / 2f).roundToInt()
+                    )
+                }
+                .size(buttonDp)
+                .clickable(
+                    interactionSource = homeSource,
+                    indication = null,
+                    onClick = {
+                        if (confirm == ConfirmKind.NONE && !controller.showGameOver) {
+                            menuOpen = false
+                            confirm = ConfirmKind.LEAVE
+                        }
+                    }
+                )
+        )
+        Box(
+            modifier = Modifier
+                .offset {
+                    IntOffset(
+                        (layout.menuCenter.x - layout.roundButtonDiameter / 2f).roundToInt(),
+                        (layout.menuCenter.y - layout.roundButtonDiameter / 2f).roundToInt()
+                    )
+                }
+                .size(buttonDp)
+                .clickable(
+                    interactionSource = menuSource,
+                    indication = null,
+                    onClick = {
+                        if (confirm == ConfirmKind.NONE && !controller.showGameOver) menuOpen = !menuOpen
+                    }
+                )
+        )
 
         // 6. the Game Over dialog, above everything
         if (controller.showGameOver) {
             val humanWon = controller.winner == Seat.HUMAN
             GameOverDialog(
                 title = "Game Over",
-                winnerLine = if (humanWon) "You are the winner" else "$topName is the winner",
+                winnerLine = when {
+                    humanWon && !multiplayer -> "You are the winner"
+                    humanWon -> "$bottomName is the winner"
+                    else -> "$topName is the winner"
+                },
                 rows = listOf(
                     bottomName to controller.winsHuman,
                     topName to controller.winsOpponent
                 ),
                 onContinue = { controller.dismissGameOver() }
             )
+        }
+
+        // 7. the confirm dialogs, above the Game Over dialog
+        when (confirm) {
+            ConfirmKind.LEAVE -> ConfirmDialog(
+                title = "Leave this game?",
+                message = if (controller.showGameOver) {
+                    "Your Wins are saved."
+                } else {
+                    "Your game is saved. You can carry on later."
+                },
+                onYes = {
+                    confirm = ConfirmKind.NONE
+                    onLeave()
+                },
+                onNo = { confirm = ConfirmKind.NONE }
+            )
+            ConfirmKind.RESTART -> ConfirmDialog(
+                title = "Restart this round?",
+                message = "Your Wins are kept.",
+                onYes = {
+                    confirm = ConfirmKind.NONE
+                    menuOpen = false
+                    controller.restartRound()
+                },
+                onNo = { confirm = ConfirmKind.NONE }
+            )
+            ConfirmKind.NONE -> Unit
+        }
+    }
+}
+
+/** Opens the Play Store page of SnakeMate; falls back to the website when no store app answers. */
+private fun openRatePage(context: Context) {
+    val market = Intent(Intent.ACTION_VIEW, Uri.parse("market://details?id=com.westly.snakes"))
+        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    try {
+        context.startActivity(market)
+    } catch (e: ActivityNotFoundException) {
+        val web = Intent(
+            Intent.ACTION_VIEW,
+            Uri.parse("https://play.google.com/store/apps/details?id=com.westly.snakes")
+        ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        try {
+            context.startActivity(web)
+        } catch (e2: ActivityNotFoundException) {
+            // no app can open a link: nothing more to do
         }
     }
 }

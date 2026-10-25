@@ -6,6 +6,8 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
+import com.westly.snakes.data.Prefs
+import com.westly.snakes.data.SavedGame
 import com.westly.snakes.ui.GameLayout
 import com.westly.snakes.ui.Geo
 import com.westly.snakes.ui.layers.DiceToss
@@ -21,7 +23,7 @@ import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.sin
 
-/** The two ways to play. Only [VS_COMPUTER] is playable in Phase 5. */
+/** The two ways to play: against the Computer, or two people on one phone. */
 enum class GameMode { VS_COMPUTER, MULTIPLAYER }
 
 /** Moments of the game that sounds and haptics will hook into later (nothing is connected yet). */
@@ -43,24 +45,31 @@ private val CONTROLLER_PI = PI.toFloat()
  * (the Computer plays by itself), tosses the dice, applies [resolveMove] and animates the result,
  * then hands the turn to the other seat. All visible state is Compose state.
  *
- * Wins are kept in memory only (saving comes in a later phase).
+ * In [GameMode.MULTIPLAYER] both seats are people: each taps their own tray and their own pawn.
+ * Wins are loaded from [prefs] when the game starts and saved at once on every win. The game in
+ * progress is saved at the start of every turn; [resume] brings such a game back.
  */
 class GameController(
     private val scope: CoroutineScope,
     private val layout: GameLayout,
     private val animator: PawnAnimator,
     private val toss: DiceToss,
-    val mode: GameMode = GameMode.VS_COMPUTER
+    val mode: GameMode,
+    private val prefs: Prefs,
+    resume: SavedGame? = null
 ) {
+    private val multiplayer = mode == GameMode.MULTIPLAYER
+    private var pendingResume: SavedGame? = resume
+
     /** Whose turn it is. */
     var activeSeat by mutableStateOf(Seat.HUMAN)
         private set
 
-    /** True while the game waits for the human to tap the tray. */
+    /** True while the game waits for the active person to tap their own tray. */
     var waitingForHuman by mutableStateOf(false)
         private set
 
-    /** True while the human's pawn glows and waits to be tapped (the dice are already thrown). */
+    /** True while the active person's pawn glows and waits to be tapped (the dice are already thrown). */
     var waitingForPawn by mutableStateOf(false)
         private set
 
@@ -72,10 +81,10 @@ class GameController(
     var winner by mutableStateOf<Seat?>(null)
         private set
 
-    var winsHuman by mutableIntStateOf(0)
+    var winsHuman by mutableIntStateOf(if (multiplayer) prefs.winsP1 else prefs.winsMe)
         private set
 
-    var winsOpponent by mutableIntStateOf(0)
+    var winsOpponent by mutableIntStateOf(if (multiplayer) prefs.winsP2 else prefs.winsComputer)
         private set
 
     /** 0..1 while the Computer's finger presses its tray, 0 otherwise. */
@@ -91,22 +100,27 @@ class GameController(
     private val taps = Channel<Unit>(Channel.CONFLATED)
     private val pawnTaps = Channel<Unit>(Channel.CONFLATED)
 
-    /** Starts the first round. */
+    /** Starts the game: the saved game when there is one, otherwise a fresh round. */
     fun start() {
-        beginRound()
+        val saved = pendingResume
+        pendingResume = null
+        beginRound(saved)
     }
 
-    /** The human tapped a tray. Only the human's own tray counts, and only while it waits for a tap. */
+    /** True when this seat is played by a person (both seats in Multiplayer, only the bottom one against the Computer). */
+    private fun isPerson(seat: Seat): Boolean = multiplayer || seat == Seat.HUMAN
+
+    /** A person tapped a tray. Only the active person's own tray counts, and only while the game waits for it. */
     fun onTrayTapped(seat: Seat) {
-        if (seat != Seat.HUMAN) return
+        if (!isPerson(seat) || seat != activeSeat) return
         if (!waitingForHuman || showGameOver) return
         waitingForHuman = false
         taps.trySend(Unit)
     }
 
-    /** The human tapped the glowing pawn. Only counts while the pawn waits for that tap. */
+    /** A person tapped the glowing pawn. Only counts while that pawn waits for the tap. */
     fun onPawnTapped(seat: Seat) {
-        if (seat != Seat.HUMAN) return
+        if (!isPerson(seat) || seat != activeSeat) return
         if (!waitingForPawn || showGameOver) return
         waitingForPawn = false
         pawnTaps.trySend(Unit)
@@ -135,18 +149,60 @@ class GameController(
 
     // ------------------------------------------------------------------ round
 
-    private fun beginRound() {
+    private fun beginRound(resumeFrom: SavedGame? = null) {
         val old = loopJob
         loopJob = scope.launch {
             old?.cancelAndJoin()
             taps.tryReceive() // forget any tap that arrived before the new round
             pawnTaps.tryReceive()
-            resetBoard()
-            playRound()
+            if (resumeFrom != null) {
+                restoreBoard(resumeFrom)
+                playRound(if (resumeFrom.humanTurn) Seat.HUMAN else Seat.OPPONENT)
+            } else {
+                resetBoard()
+                playRound(Seat.HUMAN)
+            }
+        }
+    }
+
+    /** Puts the pawns back where the saved game left them. */
+    private fun restoreBoard(saved: SavedGame) {
+        animator.placeAt(Seat.HUMAN, saved.humanSquare)
+        animator.placeAt(Seat.OPPONENT, saved.opponentSquare)
+        toss.clearTray(true)
+        toss.clearTray(false)
+        winner = null
+        showGameOver = false
+        waitingForHuman = false
+        waitingForPawn = false
+        handPress = 0f
+        activeSeat = if (saved.humanTurn) Seat.HUMAN else Seat.OPPONENT
+    }
+
+    /** Saves the game in progress: both pawns and whose turn it is. */
+    private fun saveProgress(seat: Seat) {
+        prefs.saveGame(
+            multiplayer,
+            SavedGame(
+                humanSquare = animator.logicalSquare(Seat.HUMAN),
+                opponentSquare = animator.logicalSquare(Seat.OPPONENT),
+                humanTurn = seat == Seat.HUMAN
+            )
+        )
+    }
+
+    private fun saveWins() {
+        if (multiplayer) {
+            prefs.winsP1 = winsHuman
+            prefs.winsP2 = winsOpponent
+        } else {
+            prefs.winsMe = winsHuman
+            prefs.winsComputer = winsOpponent
         }
     }
 
     private fun resetBoard() {
+        prefs.clearGame(multiplayer) // a new round: no half-played game to come back to
         // both pawns wait in their circles (square 0) until their first roll
         animator.placeAt(Seat.HUMAN, 0)
         animator.placeAt(Seat.OPPONENT, 0)
@@ -159,12 +215,13 @@ class GameController(
         activeSeat = Seat.HUMAN
     }
 
-    private suspend fun playRound() {
-        var seat = Seat.HUMAN
+    private suspend fun playRound(firstSeat: Seat) {
+        var seat = firstSeat
         while (true) {
             activeSeat = seat
+            saveProgress(seat)
             showReadyDice(seat)
-            if (seat == Seat.HUMAN) {
+            if (isPerson(seat)) {
                 waitingForHuman = true
                 taps.receive()
                 waitingForHuman = false
@@ -211,7 +268,7 @@ class GameController(
         val position = animator.logicalSquare(seat)
 
         // The human must tap the glowing pawn before it moves; the Computer's pawn moves by itself.
-        if (seat == Seat.HUMAN) waitForPawnTap(seat) else animator.pulse(seat, PULSE_MS)
+        if (isPerson(seat)) waitForPawnTap(seat) else animator.pulse(seat, PULSE_MS)
 
         when (val result = resolveMove(position, total)) {
             is MoveResult.Walk -> {
@@ -244,7 +301,7 @@ class GameController(
         return false
     }
 
-    /** Makes the pawn glow and waits until the human taps it. */
+    /** Makes the pawn glow and waits until its player taps it. */
     private suspend fun waitForPawnTap(seat: Seat) {
         waitingForPawn = true
         val glow = scope.launch { animator.highlight(seat) }
@@ -272,6 +329,8 @@ class GameController(
         delay(GAME_OVER_DELAY_MS)
         winner = winnerSeat
         if (winnerSeat == Seat.HUMAN) winsHuman += 1 else winsOpponent += 1
+        saveWins() // saved at once
+        prefs.clearGame(multiplayer) // the round is over
         showGameOver = true
     }
 }
