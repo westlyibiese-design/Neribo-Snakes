@@ -12,7 +12,7 @@ import kotlin.math.floor
 import kotlin.math.sin
 import kotlin.math.sqrt
 
-private const val HOP_HEIGHT_CELLS = 0.28f
+private const val HOP_HEIGHT_CELLS = 0.22f
 private const val SHARE_OFFSET_CELLS = 0.2f
 private const val SHAKE_AMPLITUDE_CELLS = 0.12f
 private const val SHAKE_MS = 300L
@@ -54,6 +54,7 @@ internal class PawnPose {
     val shift = mutableFloatStateOf(0f) // sideways shift in cells (sharing a square)
     val shakeX = mutableFloatStateOf(0f) // sideways shake in pixels
     val moving = mutableStateOf(false)
+    val halo = mutableFloatStateOf(-1f) // -1 = no halo, otherwise 0..1 progress of the pre-move halo
 }
 
 /**
@@ -87,6 +88,7 @@ class PawnAnimator(private val layout: GameLayout) {
         p.lift.floatValue = 0f
         p.shakeX.floatValue = 0f
         p.moving.value = false
+        p.halo.floatValue = -1f
         refreshShifts()
     }
 
@@ -98,8 +100,16 @@ class PawnAnimator(private val layout: GameLayout) {
         opponent.shift.floatValue = if (same) shareShift(Seat.OPPONENT) else 0f
     }
 
-    /** One hop per listed square, [msPerSquare] each. Updates the logical square at the end. */
-    suspend fun walkTo(seat: Seat, squares: List<Int>, msPerSquare: Long = 170) {
+    /**
+     * One hop per listed square, [msPerSquare] each. Updates the logical square at the end.
+     * [onStep] is called with each square the moment the pawn lands on it.
+     */
+    suspend fun walkTo(
+        seat: Seat,
+        squares: List<Int>,
+        msPerSquare: Long = 100,
+        onStep: (Int) -> Unit = {}
+    ) {
         if (squares.isEmpty()) return
         val me = pose(seat)
         val otherSeat = otherSeat(seat)
@@ -124,8 +134,14 @@ class PawnAnimator(private val layout: GameLayout) {
 
         me.moving.value = true
         try {
+            var announced = 0
             runFrames(msPerSquare * n) { t ->
                 val pos = t * n
+                val landed = minOf(n, floor(pos).toInt())
+                while (announced < landed) {
+                    announced++
+                    onStep(squares[announced - 1])
+                }
                 var i = floor(pos).toInt()
                 if (i > n - 1) i = n - 1
                 if (i < 0) i = 0
@@ -236,6 +252,16 @@ class PawnAnimator(private val layout: GameLayout) {
         return 0
     }
 
+    /** Shows the halo ring around the pawn for [durationMs] (the pre-move highlight of the original game). */
+    suspend fun pulse(seat: Seat, durationMs: Long) {
+        val me = pose(seat)
+        try {
+            runFrames(durationMs) { t -> me.halo.floatValue = t }
+        } finally {
+            me.halo.floatValue = -1f
+        }
+    }
+
     /** Left and right 3 times in 300 ms, then back in place. */
     suspend fun shake(seat: Seat) {
         val me = pose(seat)
@@ -252,6 +278,9 @@ class PawnAnimator(private val layout: GameLayout) {
     // ----- read access for PawnLayer (read inside draw lambdas) -----
 
     internal fun isMoving(seat: Seat): Boolean = pose(seat).moving.value
+
+    /** 0..1 while the pre-move halo is shown, -1 otherwise. */
+    internal fun haloProgress(seat: Seat): Float = pose(seat).halo.floatValue
 
     /** Horizontal centre of the pawn on screen. */
     internal fun drawX(seat: Seat): Float {

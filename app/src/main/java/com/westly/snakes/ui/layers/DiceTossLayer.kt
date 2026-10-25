@@ -12,17 +12,15 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import com.westly.snakes.ui.GameLayout
 import com.westly.snakes.ui.components.drawDie
-import kotlinx.coroutines.delay
 import kotlin.math.PI
-import kotlin.math.round
 import kotlin.math.sin
-import kotlin.math.sqrt
 import kotlin.random.Random
 
-private const val FLIGHT_MS = 900L
-private const val REST_MS = 350L
-private const val RETURN_MS = 250L
-private const val FLIGHT_PART = 0.78f // share of the 900 ms used for the flight, the rest is the bounce
+// Timing measured from the original game: about 0.45 s of flight, a short rest, a quick return.
+private const val FLIGHT_MS = 450L
+private const val REST_MS = 150L
+private const val RETURN_MS = 110L
+private const val OUT_PART = 0.78f // share of the flight spent travelling out to the far point
 private val TOSS_PI = PI.toFloat()
 
 /** Animated state of one die that is in the air or lying on the board. */
@@ -37,6 +35,9 @@ internal class FlyingDie {
 /**
  * Plays the dice toss and remembers the faces resting in each tray.
  * Only one toss may run at a time (the caller guards this).
+ *
+ * Like the original game, both dice are thrown from the roller's tray, swing out to either side
+ * and land side by side in the middle of the board, then jump back into the tray.
  */
 class DiceToss(private val layout: GameLayout) {
     internal val dieA = FlyingDie()
@@ -53,84 +54,90 @@ class DiceToss(private val layout: GameLayout) {
         if (top) topFaces.value = null else bottomFaces.value = null
     }
 
+    /** Puts two dice at rest in a tray (the "ready" dice of the player whose turn it is). */
+    fun setTray(top: Boolean, dice: Pair<Int, Int>?) {
+        if (top) topFaces.value = dice else bottomFaces.value = dice
+    }
+
     /** Plays the whole toss and leaves the faces in the roller's tray. */
     suspend fun toss(fromTop: Boolean, dice: Pair<Int, Int>) {
         val board = layout.boardSize
         val trayCentres = layout.diceCenters(fromTop)
         val startA = trayCentres.first
         val startB = trayCentres.second
-
-        // landing spots inside the central 60% of the board, at least 0.14W apart
         val rnd = Random.Default
-        var landA = randomSpot(rnd, board)
-        var landB = randomSpot(rnd, board)
-        var tries = 0
-        while (distance(landA, landB) < 0.14f * board && tries < 200) {
-            landB = randomSpot(rnd, board)
-            tries++
-        }
-        if (distance(landA, landB) < 0.14f * board) {
-            landA = Offset(layout.boardLeft + 0.35f * board, layout.boardTop + 0.5f * board)
-            landB = Offset(layout.boardLeft + 0.65f * board, layout.boardTop + 0.5f * board)
-        }
 
-        // spin 1 to 2 turns in a random direction, curved paths with a random bend side
-        val spinA = (360f + rnd.nextFloat() * 360f) * (if (rnd.nextBoolean()) 1f else -1f)
-        val spinB = (360f + rnd.nextFloat() * 360f) * (if (rnd.nextBoolean()) 1f else -1f)
-        val bendA = (0.18f + rnd.nextFloat() * 0.14f) * (if (rnd.nextBoolean()) 1f else -1f)
-        val bendB = (0.18f + rnd.nextFloat() * 0.14f) * (if (rnd.nextBoolean()) 1f else -1f)
+        // landing: side by side in the middle of the board (the original always lands there)
+        val cx = layout.boardLeft + 0.5f * board
+        val cy = layout.boardTop + 0.5f * board
+        val jitterY = (rnd.nextFloat() - 0.5f) * 0.02f * board
+        val gap = 0.052f * board
+        val landA = Offset(cx - gap, cy + jitterY)
+        val landB = Offset(cx + gap, cy + jitterY)
 
-        val ctrlA = controlPoint(startA, landA, bendA)
-        val ctrlB = controlPoint(startB, landB, bendB)
-        val restRotA = round(spinA / 360f) * 360f
-        val restRotB = round(spinB / 360f) * 360f
+        // far points: the dice swing out to opposite sides, then come back to the middle
+        val side = if (rnd.nextBoolean()) 1f else -1f
+        val dir = if (fromTop) -1f else 1f // the throw comes from below (bottom tray) or above (top tray)
+        val apexA = Offset(cx + side * 0.31f * board, cy - dir * 0.05f * board)
+        val apexB = Offset(cx - side * 0.245f * board, cy + dir * 0.07f * board)
+        val ctrlA = bendPoint(startA, apexA, 0.05f * board * (if (rnd.nextBoolean()) 1f else -1f))
+        val ctrlB = bendPoint(startB, apexB, 0.05f * board * (if (rnd.nextBoolean()) 1f else -1f))
+
+        // spin 1.5 to 2 turns, slowing down until the dice lie upright
+        val spinA = (540f + rnd.nextFloat() * 180f) * (if (rnd.nextBoolean()) 1f else -1f)
+        val spinB = (540f + rnd.nextFloat() * 180f) * (if (rnd.nextBoolean()) 1f else -1f)
 
         val traySize = layout.diceSizeInTray
         val boardSize = layout.diceSizeOnBoard
-        val bounceHeight = 0.03f * board
 
-        // the faces of the previous roll leave both trays when a toss begins
+        // the dice leave the tray when a toss begins; the other tray is emptied too
         topFaces.value = null
         bottomFaces.value = null
         dieA.value.intValue = dice.first
         dieB.value.intValue = dice.second
-        setPlaced(dieA, startA, 0f, traySize, 0f)
-        setPlaced(dieB, startB, 0f, traySize, 0f)
+        setPlaced(dieA, startA, traySize, 0f)
+        setPlaced(dieB, startB, traySize, 0f)
         shadowOn.value = true
         flying.value = true
 
         try {
-            // 1. flight and bounce, 900 ms
+            // 1. flight: out to the far points, then back to the middle (450 ms)
             runFrames(FLIGHT_MS) { t ->
-                if (t < FLIGHT_PART) {
-                    val v = t / FLIGHT_PART
+                val slow = (1f - t) * (1f - t) * (1f - t) // spin slows to zero
+                val rotA = spinA * slow
+                val rotB = spinB * slow
+                if (t < OUT_PART) {
+                    val v = t / OUT_PART
                     val inv = 1f - v
                     val u = 1f - inv * inv * inv // ease-out
-                    val bump = 1f + 0.28f * sin(TOSS_PI * v)
+                    val bump = 1f + 0.22f * sin(TOSS_PI * v)
                     val size = (traySize + (boardSize - traySize) * u) * bump
-                    setFlight(dieA, startA, ctrlA, landA, u, size, spinA * u)
-                    setFlight(dieB, startB, ctrlB, landB, u, size, spinB * u)
+                    setAlongCurve(dieA, startA, ctrlA, apexA, u, size, rotA)
+                    setAlongCurve(dieB, startB, ctrlB, apexB, u, size, rotB)
                 } else {
-                    val s = (t - FLIGHT_PART) / (1f - FLIGHT_PART)
-                    val hop = sin(TOSS_PI * s) * (1f - s)
-                    val size = boardSize * (1f + 0.10f * hop)
-                    setPlaced(dieA, landA, hop * bounceHeight, size, spinA)
-                    setPlaced(dieB, landB, hop * bounceHeight, size, spinB)
+                    val v = (t - OUT_PART) / (1f - OUT_PART)
+                    val u = v * v * (3f - 2f * v)
+                    setPlaced(dieA, lerp(apexA, landA, u), boardSize, rotA)
+                    setPlaced(dieB, lerp(apexB, landB, u), boardSize, rotB)
                 }
             }
-            setPlaced(dieA, landA, 0f, boardSize, spinA)
-            setPlaced(dieB, landB, 0f, boardSize, spinB)
+            setPlaced(dieA, landA, boardSize, 0f)
+            setPlaced(dieB, landB, boardSize, 0f)
 
-            // 2. rest on the board
-            delay(REST_MS)
+            // 2. a short rest with a tiny settle bounce (150 ms)
+            runFrames(REST_MS) { t ->
+                val size = boardSize * (1f + 0.07f * sin(TOSS_PI * t))
+                setPlaced(dieA, landA, size, 0f)
+                setPlaced(dieB, landB, size, 0f)
+            }
 
-            // 3. move into the roller's tray at its resting size, showing the final faces
+            // 3. quick jump back into the roller's tray, showing the final faces (110 ms)
             shadowOn.value = false
             runFrames(RETURN_MS) { t ->
                 val u = t * t * (3f - 2f * t)
                 val size = boardSize + (traySize - boardSize) * u
-                setPlaced(dieA, lerp(landA, startA, u), 0f, size, spinA + (restRotA - spinA) * u)
-                setPlaced(dieB, lerp(landB, startB, u), 0f, size, spinB + (restRotB - spinB) * u)
+                setPlaced(dieA, lerp(landA, startA, u), size, 0f)
+                setPlaced(dieB, lerp(landB, startB, u), size, 0f)
             }
         } finally {
             // always leave a consistent state, even when the toss is cancelled
@@ -140,32 +147,22 @@ class DiceToss(private val layout: GameLayout) {
         }
     }
 
-    private fun randomSpot(rnd: Random, board: Float): Offset {
-        val fx = 0.2f + rnd.nextFloat() * 0.6f
-        val fy = 0.2f + rnd.nextFloat() * 0.6f
-        return Offset(layout.boardLeft + fx * board, layout.boardTop + fy * board)
-    }
-
-    private fun distance(a: Offset, b: Offset): Float {
-        val dx = a.x - b.x
-        val dy = a.y - b.y
-        return sqrt(dx * dx + dy * dy)
-    }
-
     private fun lerp(a: Offset, b: Offset, u: Float): Offset =
         Offset(a.x + (b.x - a.x) * u, a.y + (b.y - a.y) * u)
 
-    /** Bend point of the curved path: the middle of the way pushed sideways by [bend]. */
-    private fun controlPoint(from: Offset, to: Offset, bend: Float): Offset {
+    /** Control point of a gentle curve: the middle of the way pushed sideways by [bend] pixels. */
+    private fun bendPoint(from: Offset, to: Offset, bend: Float): Offset {
         val dx = to.x - from.x
         val dy = to.y - from.y
+        val len = kotlin.math.sqrt(dx * dx + dy * dy)
+        if (len <= 0f) return from
         return Offset(
-            (from.x + to.x) / 2f - dy * bend * 2f,
-            (from.y + to.y) / 2f + dx * bend * 2f
+            (from.x + to.x) / 2f - dy / len * bend,
+            (from.y + to.y) / 2f + dx / len * bend
         )
     }
 
-    private fun setFlight(die: FlyingDie, p0: Offset, c: Offset, p1: Offset, u: Float, size: Float, rot: Float) {
+    private fun setAlongCurve(die: FlyingDie, p0: Offset, c: Offset, p1: Offset, u: Float, size: Float, rot: Float) {
         val inv = 1f - u
         die.x.floatValue = inv * inv * p0.x + 2f * inv * u * c.x + u * u * p1.x
         die.y.floatValue = inv * inv * p0.y + 2f * inv * u * c.y + u * u * p1.y
@@ -173,9 +170,9 @@ class DiceToss(private val layout: GameLayout) {
         die.rotation.floatValue = rot
     }
 
-    private fun setPlaced(die: FlyingDie, at: Offset, lift: Float, size: Float, rot: Float) {
+    private fun setPlaced(die: FlyingDie, at: Offset, size: Float, rot: Float) {
         die.x.floatValue = at.x
-        die.y.floatValue = at.y - lift
+        die.y.floatValue = at.y
         die.size.floatValue = size
         die.rotation.floatValue = rot
     }

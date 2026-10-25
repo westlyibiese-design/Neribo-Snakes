@@ -6,6 +6,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import com.westly.snakes.game.Seat
@@ -13,11 +14,12 @@ import com.westly.snakes.ui.GameLayout
 import com.westly.snakes.ui.components.PawnColor
 import com.westly.snakes.ui.components.drawPawn
 
-private val RingSoft = Color(0x33FFFFFF)
-private val RingMain = Color(0x99FFFFFF) // 60% white
+private val HaloGlow = Color(0x664FE3F0) // soft teal glow
+private val HaloMain = Color(0xE6FFFFFF) // dashed white ring
 
 /**
- * Draws both pawns above the board, plus the soft white ring under the pawn that is moving.
+ * Draws both pawns above the board, plus the teal halo ring the original game shows around a pawn
+ * just before it moves.
  * It reads animation state only inside the draw lambda and does not touch input.
  */
 @Composable
@@ -35,10 +37,20 @@ private fun DrawScope.drawSeat(layout: GameLayout, animator: PawnAnimator, seat:
     val cell = layout.cell
     val x = animator.drawX(seat)
     val ground = animator.groundY(seat)
-    if (animator.isMoving(seat)) {
-        val ringCenter = Offset(x, ground)
-        drawCircle(color = RingSoft, radius = 0.5f * cell, center = ringCenter, style = Stroke(width = 0.14f * cell))
-        drawCircle(color = RingMain, radius = 0.5f * cell, center = ringCenter, style = Stroke(width = 0.05f * cell))
+    val halo = animator.haloProgress(seat)
+    if (halo >= 0f) {
+        val ringCenter = Offset(x, ground - 0.12f * cell)
+        val radius = (0.55f + 0.08f * halo) * cell
+        drawCircle(color = HaloGlow, radius = radius, center = ringCenter, style = Stroke(width = 0.16f * cell))
+        drawCircle(
+            color = HaloMain,
+            radius = radius,
+            center = ringCenter,
+            style = Stroke(
+                width = 0.045f * cell,
+                pathEffect = PathEffect.dashPathEffect(floatArrayOf(0.14f * cell, 0.1f * cell))
+            )
+        )
     }
     drawPawn(
         baseCenter = Offset(x, ground - animator.liftPx(seat)),

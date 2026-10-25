@@ -192,8 +192,15 @@ private fun DrawScope.drawLadder(g: Geo, from: Int, to: Int) {
     rungs(-cell * 0.01f, -cell * 0.01f, Color(0xFFD9A468), cell * 0.028f)
 }
 
-private fun DrawScope.drawSnake(g: Geo, head: Int, tail: Int) {
-    val style = SNAKE_STYLES[head] ?: return
+/** The sampled body of one snake: 91 points from the head (index 0) to the tail. */
+private class SnakeCurve(
+    val xs: FloatArray,
+    val ys: FloatArray,
+    val ts: FloatArray,
+    val lengthInCells: Float
+)
+
+private fun computeSnakeCurve(g: Geo, head: Int, tail: Int, phase: Float): SnakeCurve {
     val cell = g.cell
     val a = g.center(head)
     val b = g.center(tail)
@@ -215,11 +222,33 @@ private fun DrawScope.drawSnake(g: Geo, head: Int, tail: Int) {
     for (i in 0..n) {
         val t = i.toFloat() / n
         val env = maxOf(0f, sin(PI_F * t)).pow(0.7f)
-        val off = sin(TWO_PI_F * waves * t + style.phase * TWO_PI_F) * amp * env
+        val off = sin(TWO_PI_F * waves * t + phase * TWO_PI_F) * amp * env
         xs[i] = a.x + dx * t + px * off
         ys[i] = a.y + dy * t + py * off
         ts[i] = t
     }
+    return SnakeCurve(xs, ys, ts, lc)
+}
+
+/**
+ * The drawn body of a snake as 91 points, index 0 at the head, relative to the board's top-left
+ * corner. A pawn sliding down the snake follows exactly these points.
+ */
+internal fun snakeCurve(g: Geo, head: Int, tail: Int): List<Offset> {
+    val phase = SNAKE_STYLES[head]?.phase ?: 0f
+    val curve = computeSnakeCurve(g, head, tail, phase)
+    return List(curve.xs.size) { Offset(curve.xs[it], curve.ys[it]) }
+}
+
+private fun DrawScope.drawSnake(g: Geo, head: Int, tail: Int) {
+    val style = SNAKE_STYLES[head] ?: return
+    val cell = g.cell
+    val curve = computeSnakeCurve(g, head, tail, style.phase)
+    val xs = curve.xs
+    val ys = curve.ys
+    val ts = curve.ts
+    val n = xs.size - 1
+    val lc = curve.lengthInCells
 
     fun radius(t: Float): Float = cell * (0.2f - 0.115f * t) + (if (t < 0.06f) cell * 0.03f else 0f)
 

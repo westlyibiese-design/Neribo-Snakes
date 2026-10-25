@@ -13,12 +13,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -28,8 +25,8 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
+import com.westly.snakes.game.GameController
 import com.westly.snakes.game.Seat
-import com.westly.snakes.game.rollTwoDice
 import com.westly.snakes.ui.components.ButtonIcon
 import com.westly.snakes.ui.components.LabelAlign
 import com.westly.snakes.ui.components.PawnColor
@@ -44,7 +41,6 @@ import com.westly.snakes.ui.layers.DiceToss
 import com.westly.snakes.ui.layers.DiceTossLayer
 import com.westly.snakes.ui.layers.PawnAnimator
 import com.westly.snakes.ui.layers.PawnLayer
-import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -52,8 +48,8 @@ import kotlin.math.sin
 import kotlin.random.Random
 
 // ---------------------------------------------------------------------------
-// Phase 4: the game screen around the board plus dice tossing and pawn walking.
-// Only the bottom tray is tappable; only the red pawn moves.
+// Phase 5: the game screen around the board, now driven by the GameController:
+// turns, dice, snakes, ladders, the Computer player, winning and the Game Over dialog.
 // ---------------------------------------------------------------------------
 
 private const val TEXTURE_COUNT = 300
@@ -63,9 +59,7 @@ private val HAND_TWO_PI = (2.0 * PI).toFloat()
 @Composable
 fun GameScreen(
     topName: String = "Computer",
-    bottomName: String = "Me",
-    topWins: Int = 0,
-    bottomWins: Int = 0
+    bottomName: String = "Me"
 ) {
     BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         val dens = LocalDensity.current
@@ -84,7 +78,8 @@ fun GameScreen(
         val animator = remember(layout) { PawnAnimator(layout) }
         val toss = remember(layout) { DiceToss(layout) }
         val scope = rememberCoroutineScope()
-        var busy by remember { mutableStateOf(false) }
+        val controller = remember(layout) { GameController(scope, layout, animator, toss) }
+        LaunchedEffect(controller) { controller.start() }
 
         // 1. background gradient and texture
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -120,15 +115,14 @@ fun GameScreen(
             drawWoodCircle(layout.bottomSlotCenter, layout.circleDiameter)
             drawWoodCircle(layout.bottomCounterCenter, layout.circleDiameter)
 
-            // my red pawn in my slot (centred vertically in the circle)
+            // the pawn of the player whose turn it is, in that player's slot
             val pawnHeight = w * 0.095f
+            val opponentActive = controller.activeSeat == Seat.OPPONENT
+            val slotCenter = if (opponentActive) layout.topSlotCenter else layout.bottomSlotCenter
             drawPawn(
-                baseCenter = Offset(
-                    layout.bottomSlotCenter.x,
-                    layout.bottomSlotCenter.y + 0.385f * pawnHeight
-                ),
+                baseCenter = Offset(slotCenter.x, slotCenter.y + 0.385f * pawnHeight),
                 height = pawnHeight,
-                color = PawnColor.RED
+                color = if (opponentActive) PawnColor.BLUE else PawnColor.RED
             )
 
             // counters
@@ -151,7 +145,7 @@ fun GameScreen(
 
             // Wins and Rank
             drawOutlinedText(
-                "Wins: $topWins", layout.topWinsAnchor, w * 0.065f,
+                "Wins: ${controller.winsOpponent}", layout.topWinsAnchor, w * 0.065f,
                 GameColors.Cream, GameColors.DarkBlueOutline, LabelAlign.LEFT
             )
             drawOutlinedText(
@@ -159,19 +153,22 @@ fun GameScreen(
                 GameColors.Cream, GameColors.DarkBlueOutline, LabelAlign.LEFT
             )
             drawOutlinedText(
-                "Wins: $bottomWins", layout.bottomWinsAnchor, w * 0.065f,
+                "Wins: ${controller.winsHuman}", layout.bottomWinsAnchor, w * 0.065f,
                 GameColors.Cream, GameColors.DarkBlueOutline, LabelAlign.LEFT
             )
 
-            // Your Turn pill
-            drawTurnPill(layout.pillRect, w)
+            // Your Turn pill: during the human's whole turn
+            if (controller.activeSeat == Seat.HUMAN) {
+                drawTurnPill(layout.pillRect, w)
+            }
         }
 
         // 3b. pawns, then dice (flying dice and the faces resting in the trays); no touch handling
         PawnLayer(layout, animator)
         DiceTossLayer(layout, toss)
 
-        // 4. the pointing hand, bobbing above my tray
+        // 4. the pointing hand: above my tray while it waits for my tap, above the Computer's tray
+        //    (pressing it) while the Computer plays
         val phase = remember { mutableFloatStateOf(0f) }
         LaunchedEffect(Unit) {
             while (true) {
@@ -183,8 +180,14 @@ fun GameScreen(
         }
         Canvas(modifier = Modifier.fillMaxSize()) {
             val bob = sin(phase.floatValue * HAND_TWO_PI) * layout.boardSize * 0.01f
-            val tip = layout.bottomHandAnchor
-            drawHand(Offset(tip.x, tip.y - bob), layout.boardSize * 0.095f)
+            if (controller.waitingForHuman) {
+                val tip = layout.bottomHandAnchor
+                drawHand(Offset(tip.x, tip.y - bob), layout.boardSize * 0.095f)
+            } else if (controller.activeSeat == Seat.OPPONENT && !controller.showGameOver) {
+                val tip = layout.topHandAnchor
+                val press = controller.handPress * layout.boardSize * 0.03f
+                drawHand(Offset(tip.x, tip.y - bob * (1f - controller.handPress) + press), layout.boardSize * 0.095f)
+            }
         }
 
         // 5. invisible tap area on my tray (no ripple, no visible change)
@@ -197,28 +200,23 @@ fun GameScreen(
                 .clickable(
                     interactionSource = noInteraction,
                     indication = null,
-                    onClick = {
-                        if (!busy) {
-                            busy = true
-                            scope.launch {
-                                try {
-                                    val dice = rollTwoDice()
-                                    toss.toss(fromTop = false, dice = dice)
-                                    val total = dice.first + dice.second
-                                    val from = animator.logicalSquare(Seat.HUMAN)
-                                    if (from + total > 100) {
-                                        animator.shake(Seat.HUMAN)
-                                    } else {
-                                        animator.walkTo(Seat.HUMAN, ((from + 1)..(from + total)).toList())
-                                    }
-                                } finally {
-                                    busy = false
-                                }
-                            }
-                        }
-                    }
+                    onClick = { controller.onTrayTapped(Seat.HUMAN) }
                 )
         )
+
+        // 6. the Game Over dialog, above everything
+        if (controller.showGameOver) {
+            val humanWon = controller.winner == Seat.HUMAN
+            GameOverDialog(
+                title = "Game Over",
+                winnerLine = if (humanWon) "You are the winner" else "$topName is the winner",
+                rows = listOf(
+                    bottomName to controller.winsHuman,
+                    topName to controller.winsOpponent
+                ),
+                onContinue = { controller.dismissGameOver() }
+            )
+        }
     }
 }
 
