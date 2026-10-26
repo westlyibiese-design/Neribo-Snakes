@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -33,9 +34,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.res.painterResource
+import com.westly.snakes.R
 import com.westly.snakes.data.Prefs
 import com.westly.snakes.game.GameController
 import com.westly.snakes.game.GameMode
@@ -98,9 +102,6 @@ fun GameScreen(
         val layout = remember(widthPx, heightPx, topInsetPx, bottomInsetPx, pxPerDp) {
             GameLayout(widthPx, heightPx, topInsetPx, bottomInsetPx, pxPerDp)
         }
-        val texture = remember(widthPx, heightPx, pxPerDp) {
-            buildTexture(widthPx, heightPx, pxPerDp)
-        }
         val animator = remember(layout) { PawnAnimator(layout) }
         val toss = remember(layout) { DiceToss(layout) }
         val scope = rememberCoroutineScope()
@@ -132,15 +133,13 @@ fun GameScreen(
             }
         }
 
-        // 1. background gradient and texture
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            drawRect(
-                brush = Brush.verticalGradient(
-                    listOf(GameColors.BackgroundTop, GameColors.BackgroundBottom)
-                )
-            )
-            drawTexture(texture, pxPerDp)
-        }
+        // 1. the night jungle picture fills the whole screen (cropped, never stretched)
+        Image(
+            painter = painterResource(R.drawable.bg_game),
+            contentDescription = null,
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.fillMaxSize()
+        )
 
         // 2. the board (Phase 2 drawing, unchanged)
         BoardCanvas(
