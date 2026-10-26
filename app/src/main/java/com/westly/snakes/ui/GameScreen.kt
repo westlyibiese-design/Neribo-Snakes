@@ -413,23 +413,24 @@ fun GameScreen(
         if (controller.showGameOver) {
             val humanWon = controller.winner == Seat.HUMAN
             GameOverDialog(
-                title = "Game Over",
-                winnerLine = when {
-                    humanWon && !multiplayer -> "You are the winner"
-                    humanWon -> "$bottomName is the winner"
-                    else -> "$topName is the winner"
+                won = if (multiplayer) true else humanWon,
+                scoreLine = if (multiplayer) {
+                    val winnerName = if (humanWon) bottomName else topName
+                    "$winnerName wins  (${controller.winsHuman} - ${controller.winsOpponent})"
+                } else {
+                    "$bottomName ${controller.winsHuman} - ${controller.winsOpponent} $topName"
                 },
-                rows = listOf(
-                    bottomName to controller.winsHuman,
-                    topName to controller.winsOpponent
-                ),
-                onContinue = {
+                onPlayAgain = {
                     sound.play(Sound.BUTTON)
                     controller.dismissGameOver()
+                },
+                onLeave = {
+                    sound.play(Sound.BUTTON)
+                    confirm = ConfirmKind.LEAVE
                 }
             )
-            // confetti falls over the dialog for 1.5 seconds
-            ConfettiOverlay()
+            // confetti falls over the dialog for 1.5 seconds, only when someone has won to celebrate
+            if (multiplayer || humanWon) ConfettiOverlay()
         }
 
         // 7. the confirm dialogs, above the Game Over dialog
