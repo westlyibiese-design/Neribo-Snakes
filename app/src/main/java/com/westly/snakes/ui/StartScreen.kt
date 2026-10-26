@@ -34,12 +34,16 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 import com.westly.snakes.R
+import com.westly.snakes.audio.Sound
+import com.westly.snakes.audio.SoundEngine
 import com.westly.snakes.data.Prefs
 import com.westly.snakes.game.GameMode
 import com.westly.snakes.ui.components.ButtonIcon
@@ -63,6 +67,7 @@ private const val PANEL_ASPECT = 0.8f
 @Composable
 fun StartScreen(
     prefs: Prefs,
+    sound: SoundEngine,
     onStart: (GameMode) -> Unit,
     onClose: () -> Unit
 ) {
@@ -103,9 +108,18 @@ fun StartScreen(
                     w = w,
                     savedVs = savedVs,
                     savedMp = savedMp,
-                    onVs = { onStart(GameMode.VS_COMPUTER) },
-                    onMp = { onStart(GameMode.MULTIPLAYER) },
-                    onClose = onClose
+                    onVs = {
+                        sound.play(Sound.BUTTON)
+                        onStart(GameMode.VS_COMPUTER)
+                    },
+                    onMp = {
+                        sound.play(Sound.BUTTON)
+                        onStart(GameMode.MULTIPLAYER)
+                    },
+                    onClose = {
+                        sound.play(Sound.BUTTON)
+                        onClose()
+                    }
                 )
             }
 
@@ -121,10 +135,14 @@ fun StartScreen(
         // the speaker at the top-right of the screen toggles the sound
         RedRoundButton(
             icon = if (soundOn) ButtonIcon.SOUND_ON else ButtonIcon.SOUND_OFF,
+            description = if (soundOn) "Sound on" else "Sound off",
             buttonSize = w * 0.11f,
             onClick = {
+                // the speaker switches sound and vibration together
                 soundOn = !soundOn
                 prefs.soundOn = soundOn
+                prefs.vibrationOn = soundOn
+                sound.play(Sound.BUTTON)
             },
             modifier = Modifier
                 .align(Alignment.TopEnd)
@@ -175,9 +193,9 @@ private fun StartPanel(
             drawCloseCross(Offset(0.865f * pw, 0.29f * ph), pw)
         }
 
-        PanelTapArea(0.495f, 0.474f, 0.235f * panelWidthPx, 0.07f * panelHeightPx, panelWidthPx, panelHeightPx, true, onVs)
-        PanelTapArea(0.495f, 0.685f, 0.235f * panelWidthPx, 0.07f * panelHeightPx, panelWidthPx, panelHeightPx, true, onMp)
-        PanelTapArea(0.865f, 0.29f, 0.055f * panelWidthPx, 0.055f * panelWidthPx, panelWidthPx, panelHeightPx, true, onClose)
+        PanelTapArea(0.495f, 0.474f, 0.235f * panelWidthPx, 0.07f * panelHeightPx, panelWidthPx, panelHeightPx, true, "You and Computer", onVs)
+        PanelTapArea(0.495f, 0.685f, 0.235f * panelWidthPx, 0.07f * panelHeightPx, panelWidthPx, panelHeightPx, true, "Multiplayer", onMp)
+        PanelTapArea(0.865f, 0.29f, 0.055f * panelWidthPx, 0.055f * panelWidthPx, panelWidthPx, panelHeightPx, true, "Close the game", onClose)
     }
 }
 
@@ -233,6 +251,7 @@ private fun PanelTapArea(
     panelWidthPx: Float,
     panelHeightPx: Float,
     rounded: Boolean,
+    description: String,
     onClick: () -> Unit
 ) {
     val density = LocalDensity.current
@@ -254,18 +273,20 @@ private fun PanelTapArea(
                 color = if (pressed) Color(0x33FFFFFF) else Color.Transparent,
                 shape = RoundedCornerShape(if (rounded) 50 else 0)
             )
+            .semantics { contentDescription = description }
             .clickable(interactionSource = source, indication = null, onClick = onClick)
     )
 }
 
 /** A glossy red round button of the given size with a white icon. It shrinks to 0.94 while pressed. */
 @Composable
-private fun RedRoundButton(icon: ButtonIcon, buttonSize: Dp, onClick: () -> Unit, modifier: Modifier) {
+private fun RedRoundButton(icon: ButtonIcon, description: String, buttonSize: Dp, onClick: () -> Unit, modifier: Modifier) {
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
     Box(
         modifier = modifier
             .size(buttonSize)
+            .semantics { contentDescription = description }
             .clickable(interactionSource = source, indication = null, onClick = onClick)
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {

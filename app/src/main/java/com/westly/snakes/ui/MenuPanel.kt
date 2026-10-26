@@ -24,6 +24,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.IntOffset
 import com.westly.snakes.ui.components.ButtonIcon
 import com.westly.snakes.ui.components.LabelAlign
@@ -101,11 +103,13 @@ fun MenuPanel(
             ButtonIcon.STAR
         )
         val actions = listOf(onExit, onRestart, onSound, onRate)
+        val descriptions = listOf("Exit", "Restart", if (soundOn) "Sound on" else "Sound off", "Rate the game")
         for (i in 0 until 4) {
             MenuRoundButton(
                 center = Offset(centerX + (i - 1.5f) * spacing, centerY),
                 diameter = buttonDiameter,
                 icon = icons[i],
+                description = descriptions[i],
                 onClick = actions[i]
             )
         }
@@ -113,7 +117,7 @@ fun MenuPanel(
 }
 
 @Composable
-private fun MenuRoundButton(center: Offset, diameter: Float, icon: ButtonIcon, onClick: () -> Unit) {
+private fun MenuRoundButton(center: Offset, diameter: Float, icon: ButtonIcon, description: String, onClick: () -> Unit) {
     val density = LocalDensity.current
     val source = remember { MutableInteractionSource() }
     val pressed by source.collectIsPressedAsState()
@@ -121,6 +125,7 @@ private fun MenuRoundButton(center: Offset, diameter: Float, icon: ButtonIcon, o
         modifier = Modifier
             .offset { IntOffset((center.x - diameter / 2f).roundToInt(), (center.y - diameter / 2f).roundToInt()) }
             .size(with(density) { diameter.toDp() })
+            .semantics { contentDescription = description }
             .clickable(interactionSource = source, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {

@@ -39,9 +39,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import com.westly.snakes.R
+import com.westly.snakes.audio.Haptics
+import com.westly.snakes.audio.Sound
+import com.westly.snakes.audio.SoundEngine
 import com.westly.snakes.data.Prefs
 import com.westly.snakes.game.GameController
+import com.westly.snakes.game.GameEvent
 import com.westly.snakes.game.GameMode
 import com.westly.snakes.game.Seat
 import com.westly.snakes.ui.components.ButtonIcon
@@ -84,6 +90,8 @@ private enum class ConfirmKind { NONE, LEAVE, RESTART }
 fun GameScreen(
     mode: GameMode,
     prefs: Prefs,
+    sound: SoundEngine,
+    haptics: Haptics,
     onLeave: () -> Unit
 ) {
     val multiplayer = mode == GameMode.MULTIPLAYER
@@ -109,6 +117,24 @@ fun GameScreen(
             GameController(scope, layout, animator, toss, mode, prefs, prefs.loadGame(multiplayer))
         }
         DisposableEffect(controller) {
+            // the one place where the game's events become sounds and vibrations
+            controller.onEvent = { event ->
+                when (event) {
+                    GameEvent.DICE_ROLL -> sound.play(Sound.DICE_ROLL)
+                    GameEvent.STEP -> sound.play(Sound.STEP)
+                    GameEvent.LADDER -> sound.play(Sound.LADDER_UP)
+                    GameEvent.SNAKE -> {
+                        sound.play(Sound.SNAKE_DOWN)
+                        haptics.snakeBite()
+                    }
+                    GameEvent.NO_MOVE -> Unit // never happens now: a roll that is too big wins
+                    GameEvent.WIN -> {
+                        sound.play(Sound.WIN)
+                        haptics.win()
+                    }
+                    GameEvent.BUTTON -> sound.play(Sound.BUTTON)
+                }
+            }
             controller.start()
             onDispose { controller.stop() }
         }
@@ -257,6 +283,7 @@ fun GameScreen(
             modifier = Modifier
                 .offset { IntOffset(tray.left.roundToInt(), tray.top.roundToInt()) }
                 .size(with(dens) { tray.width.toDp() }, with(dens) { tray.height.toDp() })
+                .semantics { contentDescription = if (multiplayer) "Player 1 dice tray" else "My dice tray" }
                 .clickable(
                     interactionSource = noInteraction,
                     indication = null,
@@ -270,6 +297,7 @@ fun GameScreen(
                 modifier = Modifier
                     .offset { IntOffset(topTray.left.roundToInt(), topTray.top.roundToInt()) }
                     .size(with(dens) { topTray.width.toDp() }, with(dens) { topTray.height.toDp() })
+                    .semantics { contentDescription = "Player 2 dice tray" }
                     .clickable(
                         interactionSource = noInteraction,
                         indication = null,
@@ -288,6 +316,7 @@ fun GameScreen(
                 modifier = Modifier
                     .offset { IntOffset(left.roundToInt(), top.roundToInt()) }
                     .size(with(dens) { (2f * half).toDp() })
+                    .semantics { contentDescription = "Tap your pawn to move" }
                     .clickable(
                         interactionSource = noInteraction,
                         indication = null,
@@ -302,18 +331,26 @@ fun GameScreen(
             open = menuOpen,
             soundOn = soundOn,
             onExit = {
+                sound.play(Sound.BUTTON)
                 menuOpen = false
                 confirm = ConfirmKind.LEAVE
             },
             onRestart = {
+                sound.play(Sound.BUTTON)
                 menuOpen = false
                 confirm = ConfirmKind.RESTART
             },
             onSound = {
+                // the Sound button switches sound and vibration together
                 soundOn = !soundOn
                 prefs.soundOn = soundOn
+                prefs.vibrationOn = soundOn
+                sound.play(Sound.BUTTON)
             },
-            onRate = { openRatePage(context) }
+            onRate = {
+                sound.play(Sound.BUTTON)
+                openRatePage(context)
+            }
         )
 
         // 5d. the Home and grid buttons stay above the menu panel
@@ -337,11 +374,13 @@ fun GameScreen(
                     )
                 }
                 .size(buttonDp)
+                .semantics { contentDescription = "Home" }
                 .clickable(
                     interactionSource = homeSource,
                     indication = null,
                     onClick = {
                         if (confirm == ConfirmKind.NONE && !controller.showGameOver) {
+                            sound.play(Sound.BUTTON)
                             menuOpen = false
                             confirm = ConfirmKind.LEAVE
                         }
@@ -357,11 +396,15 @@ fun GameScreen(
                     )
                 }
                 .size(buttonDp)
+                .semantics { contentDescription = "Menu" }
                 .clickable(
                     interactionSource = menuSource,
                     indication = null,
                     onClick = {
-                        if (confirm == ConfirmKind.NONE && !controller.showGameOver) menuOpen = !menuOpen
+                        if (confirm == ConfirmKind.NONE && !controller.showGameOver) {
+                            sound.play(Sound.BUTTON)
+                            menuOpen = !menuOpen
+                        }
                     }
                 )
         )
@@ -380,8 +423,13 @@ fun GameScreen(
                     bottomName to controller.winsHuman,
                     topName to controller.winsOpponent
                 ),
-                onContinue = { controller.dismissGameOver() }
+                onContinue = {
+                    sound.play(Sound.BUTTON)
+                    controller.dismissGameOver()
+                }
             )
+            // confetti falls over the dialog for 1.5 seconds
+            ConfettiOverlay()
         }
 
         // 7. the confirm dialogs, above the Game Over dialog
@@ -394,20 +442,28 @@ fun GameScreen(
                     "Your game is saved. You can carry on later."
                 },
                 onYes = {
+                    sound.play(Sound.BUTTON)
                     confirm = ConfirmKind.NONE
                     onLeave()
                 },
-                onNo = { confirm = ConfirmKind.NONE }
+                onNo = {
+                    sound.play(Sound.BUTTON)
+                    confirm = ConfirmKind.NONE
+                }
             )
             ConfirmKind.RESTART -> ConfirmDialog(
                 title = "Restart this round?",
                 message = "Your Wins are kept.",
                 onYes = {
+                    sound.play(Sound.BUTTON)
                     confirm = ConfirmKind.NONE
                     menuOpen = false
                     controller.restartRound()
                 },
-                onNo = { confirm = ConfirmKind.NONE }
+                onNo = {
+                    sound.play(Sound.BUTTON)
+                    confirm = ConfirmKind.NONE
+                }
             )
             ConfirmKind.NONE -> Unit
         }

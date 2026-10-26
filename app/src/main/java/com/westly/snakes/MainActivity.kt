@@ -14,6 +14,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import com.westly.snakes.audio.Haptics
+import com.westly.snakes.audio.SoundEngine
 import com.westly.snakes.data.Prefs
 import com.westly.snakes.game.GameMode
 import com.westly.snakes.ui.GameScreen
@@ -27,12 +29,16 @@ private sealed class AppScreen {
 }
 
 class MainActivity : ComponentActivity() {
+    private lateinit var sound: SoundEngine
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge(
             statusBarStyle = SystemBarStyle.dark(AndroidColor.TRANSPARENT),
             navigationBarStyle = SystemBarStyle.dark(AndroidColor.TRANSPARENT)
         )
         super.onCreate(savedInstanceState)
+        sound = SoundEngine(applicationContext)
+        val haptics = Haptics(applicationContext)
         setContent {
             val prefs = remember { Prefs(applicationContext) }
             var showSplash by remember { mutableStateOf(true) }
@@ -45,12 +51,15 @@ class MainActivity : ComponentActivity() {
                 when (val current = screen) {
                     is AppScreen.Start -> StartScreen(
                         prefs = prefs,
+                        sound = sound,
                         onStart = { mode -> screen = AppScreen.Game(mode) },
                         onClose = { finish() }
                     )
                     is AppScreen.Game -> GameScreen(
                         mode = current.mode,
                         prefs = prefs,
+                        sound = sound,
+                        haptics = haptics,
                         onLeave = { screen = AppScreen.Start }
                     )
                 }
@@ -60,5 +69,10 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onDestroy() {
+        if (::sound.isInitialized) sound.release()
+        super.onDestroy()
     }
 }
